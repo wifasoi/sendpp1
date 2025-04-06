@@ -2,7 +2,7 @@
 name = "sendpp1"
 version = "0.1.0"
 description = "A pp1 job sender"
-authors = [{name:"Luca Cristaldi", mail:"wifasoi@gmil.com"}]
+authors = [{name = "Luca Cristaldi", email:"wifasoi@gmil.com"}]
 requires-python = ">=3.8"
 dependencies = [
     "bleak>=0.21.1",
