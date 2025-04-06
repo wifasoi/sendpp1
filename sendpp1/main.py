@@ -1,0 +1,63 @@
+import asyncio
+import click
+from click import ParamType
+from click.shell_completion import CompletionItem
+from bleak import BleakScanner, BleakClient
+from .machine import EmbroideryMachine
+from time import sleep
+
+BROTHER_MAC="1a:4b:e8"
+
+class BleUUID(ParamType):
+    name = "BleUUID"
+
+    def shell_complete(self, ctx, param, incomplete):
+        return [ CompletionItem(device.address) for device in scan() ]
+
+@click.group()
+def cli():
+    pass
+
+@click.command()
+def scan():
+    """Scan for BLE devices."""
+    async def scan_ble_devices():
+        print("Scanning for BLE devices...")
+        try:
+            devices = await BleakScanner.discover()
+        except:
+            print("No interfaces found")
+            return []
+        brother_devices = []
+        for device in devices:
+            if(BROTHER_MAC in device.address):
+                click.echo(f"Found device: {device.name} - {device.address}")
+                brother_devices.append[device]
+        return brother_devices
+
+    asyncio.run(scan_ble_devices())
+
+@click.command()
+@click.argument("device_address")
+@click.argument("characteristic_uuid")
+def read(device_address, characteristic_uuid):
+    """Read a characteristic from a BLE device."""
+    async def read_characteristic():
+        async with BleakClient(device_address) as client:
+            if await client.is_connected():
+                print(f"Connected to {device_address}")
+                with EmbroideryMachine(client) as e:
+                    while True:
+                        info = await e.machine_info
+                        state = await e.machine_state
+                        print(info)
+                        print(state)
+                        await sleep(3)
+
+    asyncio.run(read_characteristic())
+
+cli.add_command(scan)
+cli.add_command(read)
+
+if __name__ == "__main__":
+    cli()
