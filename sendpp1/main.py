@@ -3,7 +3,7 @@ import click
 from click import ParamType
 from click.shell_completion import CompletionItem
 from bleak import BleakScanner, BleakClient
-from .machine import EmbroideryMachine
+from machine import EmbroideryMachine
 from time import sleep
 
 BROTHER_MAC="1a:4b:e8"
@@ -39,20 +39,22 @@ def scan():
 
 @click.command()
 @click.argument("device_address")
-@click.argument("characteristic_uuid")
-def read(device_address, characteristic_uuid):
+def read(device_address):
     """Read a characteristic from a BLE device."""
     async def read_characteristic():
         async with BleakClient(device_address) as client:
+            #await client.connect()
+            await client.get_services()
             if await client.is_connected():
                 print(f"Connected to {device_address}")
                 with EmbroideryMachine(client) as e:
+                    print("strating shenanigans")
                     while True:
-                        info = await e.machine_info
+                        #info = await e.machine_info
                         state = await e.machine_state
-                        print(info)
+                        #print(info)
                         print(state)
-                        await sleep(3)
+                        await asyncio.sleep(1)
 
     asyncio.run(read_characteristic())
 

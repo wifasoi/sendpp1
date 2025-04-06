@@ -135,14 +135,14 @@ class SewingMachineStatus(Enum):
     Stop = 66,              # 0x42
     HoopAvoidance = 80,     # 0x50
     RLReceived = 97,        # 0x61
-    None = 221,             # 0xDD
+    none = 221,             # 0xDD
     TryConnecting = 255,    # 0xFF
     HoopAvoidanceing = 81,  # 0x51
     RLReceiving = 96,       # 0x60
 
     @classmethod
     def from_bytes(cls, data):
-        return cls(int.from_bytes(data))
+        return cls(int.from_bytes(data,byteorder="big"))
 
 
 
@@ -172,6 +172,9 @@ class MachineCommand(Enum):
     DATA_PACKET = 4609
     CLEAR_ERROR = 4864
     ERROR_LOG = 4865
+
+    def to_bytes(self):
+        return bytearray(self.value.to_bytes(2,byteorder='big'))
 
 
 @dataclass
@@ -235,9 +238,8 @@ class ServiceInfo:
 class EmbroideryMachine:
     def __init__(self, client):
         self.client = client
-        client.connect()
+        #client.connect()
 
-        self.machine_info = self.getMachineInfo()
 
     def __enter__(self):
         return self
@@ -246,14 +248,20 @@ class EmbroideryMachine:
         self.client.disconnect()
 
     @staticmethod
-    def build_cmd(cmd, data):
-        return cmd.into_bytes().append(data)
+    def build_cmd(cmd , data):
+        buffer = cmd.to_bytes()
+        if data:
+            buffer += data
+        return buffer
 
     async def send(self, cmd, data=None):
-        return await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=False)
+        print(f"sending: {cmd},{data} -> {self.build_cmd(cmd,data)}")
+        return await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=True)
 
     async def receive(self):
-        return await self.client.read_gatt_char(READ_CHAR_UUID)
+        value = await self.client.read_gatt_char(READ_CHAR_UUID)
+        print(f"receive: {value}")
+        return value
 
     async def request(self, cmd, data=None):
         await self.send(cmd,data)
