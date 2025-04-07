@@ -120,32 +120,35 @@ READ_CHAR_UUID = "A76EB9E1-F3AC-4990-84CF-3A94D2426B2B"
 WRITE_CHAR_UUID = "A76EB9E2-F3AC-4990-84CF-3A94D2426B2B"
 
 class SewingMachineStatus(Enum):
-    Initial = 0,
-    LowerThread = 1,
-    SewingWaitNoData = 16,  # 0x10
-    SewingWait = 17,        # 0x11
-    SewingDataReceive = 18, # 0x12
-    MaskTraceLockWait = 32, # 0x20
-    MaskTraceing = 33,      # 0x21
-    MaskTraceFinish = 34,   # 0x22
-    Sewing = 48,            # 0x30
-    SewingFinish = 49,      # 0x31
-    SewingInterruption = 50,# 0x32
-    ThreadChange = 64,      # 0x40
-    Pause = 65,             # 0x41
-    Stop = 66,              # 0x42
-    HoopAvoidance = 80,     # 0x50
-    RLReceived = 97,        # 0x61
-    none = 221,             # 0xDD
-    TryConnecting = 255,    # 0xFF
-    HoopAvoidanceing = 81,  # 0x51
-    RLReceiving = 96,       # 0x60
+    Initial = 0
+    LowerThread = 1
+    SewingWaitNoData = 16  # 0x10
+    SewingWait = 17        # 0x11
+    SewingDataReceive = 18 # 0x12
+    MaskTraceLockWait = 32 # 0x20
+    MaskTraceing = 33      # 0x21
+    MaskTraceFinish = 34   # 0x22
+    Sewing = 48            # 0x30
+    SewingFinish = 49      # 0x31
+    SewingInterruption = 50# 0x32
+    ThreadChange = 64      # 0x40
+    Pause = 65             # 0x41
+    Stop = 66              # 0x42
+    HoopAvoidance = 80     # 0x50
+    RLReceived = 97         # 0x61
+    none = 221             # 0xDD
+    TryConnecting = 255    # 0xFF
+    HoopAvoidanceing = 81  # 0x51
+    RLReceiving = 96       # 0x60
 
-    @classmethod
-    def from_bytes(cls, data):
-        machine_status = cls(int.from_bytes(data,byteorder="big"))
-        logger.trace("Converted: 0x{:02X} to SewingMachineStatus.{}({})", data, machine_status.name, machine_status.value)
-        return machine_status
+    # @classmethod
+    # def from_bytes(cls, data):
+    #     logger.trace(data)
+
+    #     logger.trace(int.from_bytes(data,byteorder="little"))
+    #     machine_status = cls(int.from_bytes(data,byteorder="little"))
+    #     logger.trace("Converted: 0x{:02X} to SewingMachineStatus.{}({})", data, machine_status.name, machine_status.value)
+    #     return machine_status
 
 
 
@@ -381,20 +384,20 @@ class EmbroideryMachine:
         logger.trace("From: {} and {} -> 0x{}", cmd, data, buffer.hex())
         return buffer
 
-    async def send(self, cmd: MachineCommand, data: bytearray = None) -> None:
+    async def send(self, cmd: MachineCommand, data: bytearray = b'') -> None:
         await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=True)
         logger.trace("BTSend: {}(0x{})", cmd.name, data.hex())
 
     async def receive(self) -> bytearray:
         value = await self.client.read_gatt_char(READ_CHAR_UUID)
-        logger.trace("BTReceive: 0x{value:02X}")
+        logger.trace("BTReceive: 0x{}",value.hex())
         return value
 
-    async def request(self, cmd: MachineCommand, data: bytearray = None) -> bytearray:
+    async def request(self, cmd: MachineCommand, data: bytearray = b'') -> bytearray:
         await self.send(cmd,data)
         return await self.receive()
     
-    async def command(self, cmd: MachineCommand, data: bytearray = None) -> None:
+    async def command(self, cmd: MachineCommand, data: bytearray = b'') -> None:
         await self.send(cmd, data)
         logger.debug("BT command: {}(0x{})",cmd.name, data.hex())
 
@@ -411,4 +414,4 @@ class EmbroideryMachine:
     @property
     async def machine_state(self) -> ServiceInfo:
         if info := await self.request(MachineCommand.MACHINE_STATE):
-            return SewingMachineStatus.from_bytes(info[2])
+            return SewingMachineStatus(info[2])
