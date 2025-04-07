@@ -5,8 +5,12 @@ from click.shell_completion import CompletionItem
 from bleak import BleakScanner, BleakClient
 from machine import EmbroideryMachine
 from time import sleep
+from loguru import logger
+import sys
 
 BROTHER_MAC="1a:4b:e8"
+
+logger.add(sys.stdout, level="TRACE", colorize=True, backtrace=True, diagnose=True)
 
 class BleUUID(ParamType):
     name = "BleUUID"

@@ -6,7 +6,8 @@ authors = [{name = "Luca Cristaldi", email = "wifasoi@gmil.com"}]
 requires-python = ">=3.8"
 dependencies = [
     "bleak>=0.21.1",
-    "click>=8.0.0"
+    "click>=8.0.0",
+    "loguru"
 ]
 
 [scripts]

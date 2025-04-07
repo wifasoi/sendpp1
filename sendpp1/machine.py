@@ -108,6 +108,7 @@ from typing import Iterator
 from time import sleep
 from dataclasses import dataclass
 import struct
+from loguru import logger
 
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -142,7 +143,9 @@ class SewingMachineStatus(Enum):
 
     @classmethod
     def from_bytes(cls, data):
-        return cls(int.from_bytes(data,byteorder="big"))
+        machine_status = cls(int.from_bytes(data,byteorder="big"))
+        logger.trace("Converted: 0x{:02X} to SewingMachineStatus.{}({})", data, machine_status.name, machine_status.value)
+        return machine_status
 
 
 
@@ -174,7 +177,9 @@ class MachineCommand(Enum):
     ERROR_LOG = 4865
 
     def to_bytes(self):
-        return bytearray(self.value.to_bytes(2,byteorder='big'))
+        machine_command = bytearray(self.value.to_bytes(2,byteorder='big'))
+        logger.trace("Converted: MachineCommand.{}({}) to bytearray 0x{}", self.name, self.value, machine_command.hex())
+        return machine_command
 
 
 @dataclass
@@ -235,6 +240,127 @@ class ServiceInfo:
         return cls(service_count, total_count)
 
 
+
+"""
++-------------+-----------+------------------------+------------+-----------------------------+
+| Byte Offset | Lunghezza | Campo                  | Tipo       | Note                        |
++-------------+-----------+------------------------+------------+-----------------------------+
+| 0           | 1         | AutoCutValue           | byte       |                             |
+| 1           | 1         | JumpingCutValue        | byte       |                             |
+| 2           | 9         | SerialNumber           | ASCII      |                             |
+| 11          | 1         | No                     | byte       | esadecimale                 |
+| 12          | 4         | ProductId              | uint32     |                             |
+| 16          | 6         | MacAddress             | byte[6]    | formato MAC                 |
+| 22          | 2         | SoftwareMinorVersion   | int16      | diviso per 100              |
+| 24          | 2         | BlueToothVersion       | int16      |                             |
+| 26          | 1         | Model                  | byte       |                             |
+| 27          | 1         | OEM                    | byte       |                             |
+| 28          | 1         | IsSupportMonitor       | byte       |                             |
+| 29          | 2         | EmbMaxWidth            | int16      |                             |
+| 31          | 2         | EmbMaxHeight           | int16      |                             |
+| 33          | 2         | (Ignorato?)            | ?          |                             |
+| 35          | 2         | SoftwareVersionSuffix  | int16      | accodato come stringa       |
+| 37          | 2         | (Ignorato?)            | ?          |                             |
+| 39          | 11        | ModelCode              | ASCII      |                             |
++-------------+-----------+------------------------+------------+-----------------------------+
+
+"""
+from dataclasses import dataclass
+from typing import ClassVar
+import struct
+
+@dataclass
+class BLEDeviceInfo:
+    auto_cut: int
+    jumping_cut: int
+    serial_number: str
+    no: int
+    product_id: int
+    mac_address: str
+    sw_minor: float
+    bluetooth_version: int
+    model: int
+    oem: int
+    support_monitor: int
+    emb_max_width: int
+    emb_max_height: int
+    sw_suffix: int
+    model_code: str
+
+    FORMAT: ClassVar[str] = "<BB9sB I h h B B B h h x h 2x 11s"
+    INFO_SIZE: ClassVar[int] = struct.calcsize(FORMAT)  # Should be 50
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "BLEDeviceInfo":
+        if len(data) < cls.INFO_SIZE:
+            raise ValueError("Data too short")
+
+        unpacked = struct.unpack(cls.FORMAT, data[:cls.INFO_SIZE])
+
+        (
+            auto_cut,
+            jumping_cut,
+            serial_bytes,
+            no,
+            product_id,
+            sw_minor_raw,
+            bluetooth_version,
+            model,
+            oem,
+            support_monitor,
+            emb_max_width,
+            emb_max_height,
+            sw_suffix,
+            model_code_bytes
+        ) = unpacked
+
+        serial_number = serial_bytes.decode("ascii")
+        mac_bytes = data[16:22]
+        mac_address = ":".join(f"{b:02X}" for b in mac_bytes)
+        sw_minor = round(sw_minor_raw / 100.0, 2)
+        model_code = model_code_bytes.decode("ascii").rstrip("\x00")
+
+        return cls(
+            auto_cut, jumping_cut, serial_number, no, product_id,
+            mac_address, sw_minor, bluetooth_version,
+            model, oem, support_monitor,
+            emb_max_width, emb_max_height, sw_suffix,
+            model_code
+        )
+
+    def to_bytes(self) -> bytes:
+        serial_bytes = self.serial_number.encode("ascii").ljust(9, b'\x00')
+        model_code_bytes = self.model_code.encode("ascii").ljust(11, b'\x00')
+        mac_bytes = bytes(int(b, 16) for b in self.mac_address.split(":"))
+
+        # Create a placeholder for the entire structure
+        data = bytearray(self.INFO_SIZE)
+
+        # Fill the mac address manually (still necessary, not part of struct)
+        data[16:22] = mac_bytes
+
+        struct.pack_into(
+            self.FORMAT, data, 0,
+            self.auto_cut,
+            self.jumping_cut,
+            serial_bytes,
+            self.no,
+            self.product_id,
+            int(self.sw_minor * 100),
+            self.bluetooth_version,
+            self.model,
+            self.oem,
+            self.support_monitor,
+            self.emb_max_width,
+            self.emb_max_height,
+            self.sw_suffix,
+            model_code_bytes
+        )
+
+        return bytes(data)
+
+
+
 class EmbroideryMachine:
     def __init__(self, client):
         self.client = client
@@ -248,27 +374,29 @@ class EmbroideryMachine:
         self.client.disconnect()
 
     @staticmethod
-    def build_cmd(cmd , data):
+    def build_cmd(cmd: MachineCommand , data: bytearray) -> bytearray:
         buffer = cmd.to_bytes()
         if data:
             buffer += data
+        logger.trace("From: {} and {} -> 0x{}", cmd, data, buffer.hex())
         return buffer
 
-    async def send(self, cmd, data=None):
-        print(f"sending: {cmd},{data} -> {self.build_cmd(cmd,data)}")
-        return await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=True)
+    async def send(self, cmd: MachineCommand, data: bytearray = None) -> None:
+        await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=True)
+        logger.trace("BTSend: {}(0x{})", cmd.name, data.hex())
 
-    async def receive(self):
+    async def receive(self) -> bytearray:
         value = await self.client.read_gatt_char(READ_CHAR_UUID)
-        print(f"receive: {value}")
+        logger.trace("BTReceive: 0x{value:02X}")
         return value
 
-    async def request(self, cmd, data=None):
+    async def request(self, cmd: MachineCommand, data: bytearray = None) -> bytearray:
         await self.send(cmd,data)
         return await self.receive()
     
-    async def command(self, cmd, data=None):
+    async def command(self, cmd: MachineCommand, data: bytearray = None) -> None:
         await self.send(cmd, data)
+        logger.debug("BT command: {}(0x{})",cmd.name, data.hex())
 
     @property
     async def machine_info(self) -> MachineInfo:
@@ -283,4 +411,4 @@ class EmbroideryMachine:
     @property
     async def machine_state(self) -> ServiceInfo:
         if info := await self.request(MachineCommand.MACHINE_STATE):
-            return SewingMachineStatus.from_bytes(info)
+            return SewingMachineStatus.from_bytes(info[2])
