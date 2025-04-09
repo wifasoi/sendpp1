@@ -58,6 +58,8 @@ def read(device_address):
                         state = await e.machine_state
                         #print(info)
                         print(state)
+                        state = await e.get_error_logs
+                        print(state)
                         await asyncio.sleep(1)
 
     asyncio.run(read_characteristic())
