@@ -109,6 +109,7 @@ from time import sleep
 from dataclasses import dataclass
 import struct
 from loguru import logger
+from typing import Callable
 
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -149,7 +150,6 @@ class SewingMachineStatus(Enum):
     #     machine_status = cls(int.from_bytes(data,byteorder="little"))
     #     logger.trace("Converted: 0x{:02X} to SewingMachineStatus.{}({})", data, machine_status.name, machine_status.value)
     #     return machine_status
-
 
 
 class MachineCommand(Enum):
@@ -227,7 +227,7 @@ class MachineInfo:
             serial_number, no, product_id, mac_address, bluetooth_version,
             model, oem, is_support_monitor, emb_max_width, emb_max_height, model_code
         )
-    
+
 @dataclass
 class ServiceInfo:
     service_count: int
@@ -363,55 +363,126 @@ class BLEDeviceInfo:
         return bytes(data)
 
 
-
 class EmbroideryMachine:
     def __init__(self, client):
         self.client = client
         #client.connect()
 
-
     def __enter__(self):
         return self
-    
+
     def __exit__(self, type, value, traceback):
         self.client.disconnect()
 
     @staticmethod
-    def build_cmd(cmd: MachineCommand , data: bytearray) -> bytearray:
-        buffer = cmd.to_bytes()
+    def build_cmd(cmd: bytearray , data: bytearray) -> bytearray:
+        buffer = cmd
         if data:
             buffer += data
         logger.trace("From: {} and {} -> 0x{}", cmd, data, buffer.hex())
         return buffer
 
-    async def send(self, cmd: MachineCommand, data: bytearray = b'') -> None:
+    async def send(self, cmd: bytearray, data: bytearray = b'') -> None:
         await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=True)
-        logger.trace("BTSend: {}(0x{})", cmd.name, data.hex())
+        logger.trace("BTSend: {}(0x{})", cmd.hex(), data.hex())
 
     async def receive(self) -> bytearray:
         value = await self.client.read_gatt_char(READ_CHAR_UUID)
         logger.trace("BTReceive: 0x{}",value.hex())
         return value
 
-    async def request(self, cmd: MachineCommand, data: bytearray = b'') -> bytearray:
+    async def request(self, cmd: bytearray, data: bytearray = b'') -> bytearray:
         await self.send(cmd,data)
         return await self.receive()
-    
-    async def command(self, cmd: MachineCommand, data: bytearray = b'') -> None:
+
+    async def command(self, cmd: bytearray, data: bytearray = b'') -> None:
         await self.send(cmd, data)
-        logger.debug("BT command: {}(0x{})",cmd.name, data.hex())
+        logger.debug("BT command: 0x{} (data=0x{}))", cmd.hex(), data.hex() )
+
+    async def machine_request(self, cmd: MachineCommand, data: bytearray = b'') -> bytearray:
+        response = await self.request(cmd.to_bytes(), data)
+        with logger.contextualize(cmd=cmd, data=data, response=response):
+            if not response:
+                logger.error("No data has returned", cmd.name)
+                return b''
+
+            if len(response) < 2:
+                logger.error("Response too short, received only: 0x{}", cmd.name, data.hex(), response.hex())
+
+            if cmd.to_bytes() == response[:2]:
+                logger.success("MachineCommand.{}(0x{}) -> 0x{}", cmd.name, data.hex(), response.hex())
+                return response[2:]
+
+            logger.error("First data section does not match the cmd", cmd.name, data.hex(), response.hex())
+        return b''
+
 
     @property
     async def machine_info(self) -> MachineInfo:
-        if info := await self.request(MachineCommand.MACHINE_INFO):
-            return MachineInfo.from_bytes(info)
-        
+        if data := await self.machine_request(MachineCommand.MACHINE_INFO):
+            return MachineInfo.from_bytes(data)
+
     @property
     async def service_info(self) -> ServiceInfo:
-        if info := await self.request(MachineCommand.SERVICE_COUNT):
-            return ServiceInfo.from_bytes(info)
+        if data := await self.machine_request(MachineCommand.SERVICE_COUNT):
+            return ServiceInfo.from_bytes(data)
 
     @property
     async def machine_state(self) -> ServiceInfo:
-        if info := await self.request(MachineCommand.MACHINE_STATE):
-            return SewingMachineStatus(info[2])
+        if data := await self.machine_request(MachineCommand.MACHINE_STATE):
+            return SewingMachineStatus(data[0])
+
+    @property
+    async def pattern_uuid(self) -> str:
+        if data := await self.machine_request(MachineCommand.PATTERN_UUID):
+            return str(data)
+
+    @pattern_uuid.setter
+    async def pattern_uuid(self, uuid:bytearray) -> None:
+        data = await self.machine_request(MachineCommand.SEND_UUID, uuid)
+        if len(data) > 0 and data[0] == 1:
+            logger.success("the UUID: {} was written successfully", uuid)
+        logger.error("the UUID: {} failed", uuid)
+
+
+    async def set_stitch_index(self, index: int) -> int:
+        await self.machine_request(MachineCommand.SET_NEEDLE_MODE, bytes(index))
+
+
+    async def reset_settings(self) -> None:
+        data = await self.machine_request(MachineCommand.RESET_SETTINGS)
+        if len(data) > 0 and data[0] != 0:
+            logger.error("Configuration reset failed")
+            return
+        logger.success("Configuration reset completed successfully")
+
+    async def clear_error(self) -> None:
+        await self.machine_request(MachineCommand.CLEAR_ERROR)
+        logger.success("Error cleared")
+
+    async def get_error_logs(self) -> bytearray:
+        data = await self.machine_request(MachineCommand.RESET_SETTINGS)
+        logger.info("Machine error logs: {}", str(data))
+        return data
+
+    async def delete_emboridery(self):
+        if not await self.machine_request(MachineCommand.DELETE_EMBROIDERY):
+            logger.error("Embroidery deletition failed")
+            return
+        logger.success("Embroidery deletition completed successfully")
+
+    async def resume_emboridery(self) -> None:
+        data = await self.machine_request(MachineCommand.RESUME_EMBROIDERY)
+        if len(data) > 0 and data[0] != 0:
+            logger.error("Resume embroidery failed")
+            return
+        logger.success("Resume embroidery completed successfully")
+
+    async def resume_emboridery(self) -> bool:
+        data = await self.machine_request(MachineCommand.RESUME_FLAG)
+        if len(data) > 0:
+            flag = data[0] == 1
+            logger.success("The embroidery resume flag is: ", flag)
+            return flag
+        logger.error("Resume embroidery failed")
+        return False

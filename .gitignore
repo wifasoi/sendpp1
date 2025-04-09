@@ -1,2 +1,7 @@
 .venv
 decodifica
+*.pcapng
+reverse brother pp1
+*.egg-info
+__pycache__
+.vscode

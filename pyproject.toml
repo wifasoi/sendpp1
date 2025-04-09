@@ -7,11 +7,18 @@ requires-python = ">=3.8"
 dependencies = [
     "bleak>=0.21.1",
     "click>=8.0.0",
-    "loguru"
+    "loguru",
+    "pyembroidery"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
 ]
 
 [scripts]
-bleak-scan = "sendpp1:cli"
+sendpp1 = "sendpp1:cli"
 
 [build-system]
 requires = ["setuptools", "wheel"]
