@@ -51,14 +51,12 @@ def read(device_address):
             await client.get_services()
             if await client.is_connected():
                 print(f"Connected to {device_address}")
-                async with EmbroideryMachine(client) as e:
+                with EmbroideryMachine(client) as e:
                     print("strating shenanigans")
                     while True:
                         #info = await e.machine_info
                         state = await e.machine_state
                         #print(info)
-                        print(state)
-                        state = await e.get_error_logs()
                         print(state)
                         await asyncio.sleep(1)
 

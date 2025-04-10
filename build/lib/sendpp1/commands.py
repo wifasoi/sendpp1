@@ -1,3 +1,108 @@
+# 1802 : Send EmbroideryUUID -> 3 byte, ok if last = 1
+# 1803 : GetEmbroideryResumeFlag -> 3 byte, ok if last = 1
+# 1804 : SendEmbrodieryResumeCommand -> 3 byte, ok if last = 0
+# 1800 : SendEmbrodieryDeleteCommand -> 3 bye, no check
+# 1798 : GetEmbrodieryInfo -> get unpacked TODO
+# 1799 : GetEmbrodieryMonitorInfo -> get unpacked TODO
+# 3073 : SendingHostSettings(data) ->  3 byte, ok if last = 0
+
+# 1807 : SendHoopAvoidance() -> ignored
+# 1896 : StartSewing(bool isforceResetMonitoring) -> ignored
+# 4864 : ClearError(byte errorcode) -> ignored
+
+# 2048 : GetEmbOrgPoint() -> retun unformatted bytes
+# 4865 :
+
+'''
+LE Command List (Parameters Required ✔️ / ❌)
+Command	Name	Parameters?	Parameter Description
+0	Retrieve Machine Information	❌	None
+1	Get Machine State	❌	None
+256	Retrieve Service Count	❌	None
+259	Perform Regular Inspection	❌	None
+1794	Request Pattern UUID	❌	None
+1796	Execute Mask Trace (Simple)	✔️	Single-byte mask configuration
+1808	Execute Mask Trace (Complex)	✔️	Multi-byte trace coordinates
+1797	Send Layout Data	✔️	Binary layout configuration (positioning data)
+1798	Request Embroidery Info	❌	None
+1799	Monitor Embroidery Progress	❌	None
+1800	Delete Embroidery Data	❌	None
+1801	Set Needle Mode/Stitch Index	✔️	2-byte stitch index (little-endian)
+1802	Send Embroidery UUID	✔️	16-byte UUID identifier
+1803	Check Resume Flag	❌	None
+1804	Resume Embroidery	❌	None
+1806	Start Sewing	❌	None
+1807	Activate Hoop Avoidance	❌	None
+2048	Get Origin Point	❌	None
+2816	Start Firmware Update	✔️*	Firmware data packets (implementation not fully shown)
+3072	Reset Machine Settings	❌	None
+3073	Send Host Settings	✔️	Configuration byte array (machine-specific settings)
+3074	Retrieve Machine Settings	❌	None
+4608	Prepare Data Transfer	✔️	[3] = file type, [4-7] = total length, [8-9] = checksum
+4609	Send Data Packet	✔️	[0-3] = offset, [4-N] = data chunk, [last byte] = checksum
+4864	Clear Error Log	✔️	Single-byte error code to clear
+4865	Retrieve Error Log	❌	None
+
+Key Parameter Patterns:
+
+    Data Transfer Commands (4608/4609) require structured payloads:
+
+        4608: [Type][Total Length][Checksum]
+
+        4609: [Offset][Data Chunk][Checksum]
+
+    Configuration Commands use raw byte arrays:
+
+        Layout (1797): Machine-specific positioning data
+
+        Host Settings (3073): Custom configuration bytes
+
+    UUID Handling requires 16-byte identifiers:
+
+        Sent as raw bytes (1802)
+
+        Received as byte array (1794)
+
+    Mask Trace has two modes:
+
+        Simple (1796): Single-byte activation
+
+        Complex (1808): Coordinate data package
+
+    Error Handling uses single-byte codes:
+
+        ClearError requires specific error code byte
+'''
+'''
+    public const short MachinInfoCommand = 0;
+    public const short MachinStateCommand = 1;
+    public const short ServiceCountCommand = 256;
+    public const short RegularInspectionCommand = 259;
+    private const short PatternUUIDRequestCommand = 1794;
+    private const short MaskTraceCommand = 1796;
+    private const short MaskTraceCommand1 = 1808;
+    private const short LayoutSendCommand = 1797;
+    private const short EmbSewingInfoRequestCommand = 1798;
+    private const short PatternSewingInfoCommand = 1799;
+    private const short EmbSewingDataDeleteCommand = 1800;
+    private const short NeedleModeInstructionsCommand = 1801;
+    private const short SetSetingRestCommandt = 3072;
+    private const short SetSetingSendCommandt = 3073;
+    public const short MachinSettingInfoCommand = 3074;
+    private const short EmbUUIDSendCommand = 1802;
+    private const short ResumeFlagRequestCommand = 1803;
+    private const short ResumeCommand = 1804;
+    private const byte ResumeEnableFlag = 1;
+    private const short HoopAvoidanceCommand = 1807;
+    private const short StartSewingCommand = 1806;
+    public const short SendDataInfoCommand = 4608;
+    public const short SendDataCommand = 4609;
+    public const short FirmUpdateStartCommand = 2816;
+    private const short ClearErrorCommad = 4864;
+    private const short ErrorLogReplyCommad = 4865;
+    private const short EmbOrgPointCommad = 2048;
+'''
+
 '''
 ┌──────┬───────────────────────────┬───────────────────────────────┬─────────────────────────┬─────────────────────────────┐
 │ Cmd  │ Name                      │ Response Check Requirements   │ Success Criteria         │ Error Handling               │
@@ -80,6 +185,124 @@
 '''
 
 '''
+This is the layout, we send it before the job
+namespace Asura.Core.Models
+{
+  public class BLEJobLayout
+  {
+    public short MoveX;
+    public short MoveY;
+    public short SizeX = 100;
+    public short SizeY = 100;
+    public short Rotate;
+    public byte Filp;
+    public byte Frame = 1;
+
+    public byte[] ToBytes()
+    {
+      return Enumerable.ToArray<byte>(((IEnumerable<byte>) BitUtil.GetBytes(true, this.MoveX, this.MoveY, this.SizeX, this.SizeY, this.Rotate)).Concat<byte>(this.Filp, this.Frame));
+    }
+
+    public void SetFrame(BLEJobLayout.BLEFrame frame) => this.Frame = (byte) frame;
+
+    public enum BLEFrame : byte
+    {
+      Frame70,
+      Frame100,
+    }
+  }
+}
+
+'''
+
+'''
+Used in GetEmbrodieryInfo
+    public void UpdateEmbroideryInfo(byte[] data)
+    {
+      this.EmbSizeLeft = BitConverter.ToInt16(data, 0);
+      this.EmbSizeTop = BitConverter.ToInt16(data, 2);
+      this.EmbSizeRight = BitConverter.ToInt16(data, 4);
+      this.EmbSizeBottom = BitConverter.ToInt16(data, 6);
+      this.EmbTotalTime = BitConverter.ToInt16(data, 8);
+      this.EmbTotalStitches = BitConverter.ToUInt16(data, 10);
+      this.EmbSpeed = BitConverter.ToInt16(data, 12);
+    }
+
+    
+Used inUpdateEmbroideryMonitorInfo
+    public void UpdateEmbroideryMonitorInfo(byte[] data)
+    {
+      this.EmbCurrentStitches = BitConverter.ToUInt16(data, 0);
+      this.EmbCurrentTime = BitConverter.ToInt16(data, 2);
+      this.EmbStopTime = BitConverter.ToInt16(data, 4);
+      this.CurrentStitchX = BitConverter.ToInt16(data, 6);
+      this.CurrentStitchY = BitConverter.ToInt16(data, 8);
+      Action monitorStatusUpdated = this.MonitorStatusUpdated;
+      if (monitorStatusUpdated == null)
+        return;
+      monitorStatusUpdated();
+    }
+'''
+'''
+private Task<bool> Write(short cmd, params byte[] data)
+    {
+      return Task.Run<bool>((Func<Task<bool>>) (async () =>
+      {
+        try
+        {
+          if (!this.isConnect || this.gatt == null)
+            return false;
+          if (!this.gatt.Connect())
+          {
+            this.gatt.Disconnect();
+            return false;
+          }
+          BluetoothGattService service = this.gatt.GetService(UUID.FromString("a76eb9e0-f3ac-4990-84cf-3a94d2426b2b"));
+          if (service == null)
+          {
+            this.gatt.Disconnect();
+            return false;
+          }
+          this.isWriteSuccess = false;
+          this.writeSignal.Reset();
+          byte[] _data = Enumerable.ToArray<byte>(((IEnumerable<byte>) BitUtil.GetBytes(cmd)).Concat<byte>(data));
+          if (!await MainThread.InvokeOnMainThreadAsync<bool>((Func<bool>) (() =>
+          {
+            try
+            {
+              BluetoothGattCharacteristic characteristic = service.GetCharacteristic(UUID.FromString("A76EB9E2-F3AC-4990-84CF-3A94D2426B2B"));
+              if (characteristic == null || characteristic.Properties != GattProperty.Write)
+              {
+                this.gatt.Disconnect();
+                return false;
+              }
+              if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+                return this.gatt.WriteCharacteristic(characteristic, _data, 2) == 0;
+              characteristic.SetValue(_data);
+              characteristic.WriteType = GattWriteType.Default;
+              return this.gatt.WriteCharacteristic(characteristic);
+            }
+            catch
+            {
+              return false;
+            }
+          })))
+          {
+            this.gatt.Disconnect();
+            return false;
+          }
+          this.writeSignal.WaitOne(TimeSpan.FromSeconds((double) this.GattTimeout));
+          return this.isWriteSuccess;
+        }
+        catch
+        {
+          return false;
+        }
+      }));
+    }
+'''
+
+'''
 Le caratteristiche GATT estratte dal codice sono le seguenti:
 
 Servizio GATT:
@@ -98,391 +321,83 @@ Caratteristiche GATT:
 
 Queste caratteristiche vengono utilizzate rispettivamente per la lettura (ReadCharacteristic) e la scrittura (WriteCharacteristic) dei dati su un dispositivo BLE.
 '''
-# max_write_without_response_size
+
+
+
+from dataclasses import dataclass
 from enum import Enum
-
-import asyncio
-import sys
-from itertools import count, takewhile
-from typing import Iterator
-from time import sleep
-from dataclasses import dataclass
-import struct
-from loguru import logger
-from typing import Callable
-
-from bleak import BleakClient, BleakScanner
-from bleak.backends.characteristic import BleakGATTCharacteristic
-from bleak.backends.device import BLEDevice
-from bleak.backends.scanner import AdvertisementData
-
-MAIN_SERVICE_UUID = "a76eb9e0-f3ac-4990-84cf-3a94d2426b2b"
-READ_CHAR_UUID = "A76EB9E1-F3AC-4990-84CF-3A94D2426B2B"
-WRITE_CHAR_UUID = "A76EB9E2-F3AC-4990-84CF-3A94D2426B2B"
-
-class SewingMachineStatus(Enum):
-    Initial = 0
-    LowerThread = 1
-    SewingWaitNoData = 16  # 0x10
-    SewingWait = 17        # 0x11
-    SewingDataReceive = 18 # 0x12
-    MaskTraceLockWait = 32 # 0x20
-    MaskTraceing = 33      # 0x21
-    MaskTraceFinish = 34   # 0x22
-    Sewing = 48            # 0x30
-    SewingFinish = 49      # 0x31
-    SewingInterruption = 50# 0x32
-    ThreadChange = 64      # 0x40
-    Pause = 65             # 0x41
-    Stop = 66              # 0x42
-    HoopAvoidance = 80     # 0x50
-    RLReceived = 97         # 0x61
-    none = 221             # 0xDD
-    TryConnecting = 255    # 0xFF
-    HoopAvoidanceing = 81  # 0x51
-    RLReceiving = 96       # 0x60
-
-    # @classmethod
-    # def from_bytes(cls, data):
-    #     logger.trace(data)
-
-    #     logger.trace(int.from_bytes(data,byteorder="little"))
-    #     machine_status = cls(int.from_bytes(data,byteorder="little"))
-    #     logger.trace("Converted: 0x{:02X} to SewingMachineStatus.{}({})", data, machine_status.name, machine_status.value)
-    #     return machine_status
-
-
-class MachineCommand(Enum):
-    MACHINE_INFO = 0
-    MACHINE_STATE = 1
-    SERVICE_COUNT = 256
-    REGULAR_INSPECTION = 259
-    PATTERN_UUID = 1794
-    MASK_TRACE_SIMPLE = 1796
-    MASK_TRACE_COMPLEX = 1808
-    LAYOUT_DATA = 1797
-    EMBROIDERY_INFO = 1798
-    EMBROIDERY_MONITOR = 1799
-    DELETE_EMBROIDERY = 1800
-    SET_NEEDLE_MODE = 1801
-    SEND_UUID = 1802
-    RESUME_FLAG = 1803
-    RESUME_EMBROIDERY = 1804
-    START_SEWING = 1806
-    HOOP_AVOIDANCE = 1807
-    ORIGIN_POINT = 2048
-    RESET_SETTINGS = 3072
-    SEND_HOST_SETTINGS = 3073
-    MACHINE_SETTINGS = 3074
-    PREPARE_TRANSFER = 4608
-    DATA_PACKET = 4609
-    CLEAR_ERROR = 4864
-    ERROR_LOG = 4865
-
-    def to_bytes(self):
-        machine_command = bytearray(self.value.to_bytes(2,byteorder='big'))
-        logger.trace("Converted: MachineCommand.{}({}) to bytearray 0x{}", self.name, self.value, machine_command.hex())
-        return machine_command
-
-
-@dataclass
-class MachineInfo:
-    software_version: int
-    auto_cut: int
-    jumping_cut: int
-    buzzer: int
-    foot_height: int
-    serial_number: str
-    no: int
-    product_id: int
-    mac_address: str
-    bluetooth_version: int
-    model: int
-    oem: int
-    is_support_monitor: int
-    emb_max_width: int
-    emb_max_height: int
-    model_code: str
-
-    @classmethod
-    def from_bytes(cls, info_bytes: bytes):
-        if len(info_bytes) < 50:
-            raise ValueError("Info bytes length must be at least 50 bytes")
-
-        unpacked = struct.unpack("<H4B9sB I 6s H B B B H H 6x 11s", info_bytes[:50])
-
-        software_version = unpacked[0]
-        auto_cut, jumping_cut, buzzer, foot_height = unpacked[1:5]
-        serial_number = unpacked[5].decode("ascii").strip()
-        no = unpacked[6]
-        product_id = unpacked[7]
-        mac_address = ":".join(f"{b:02X}" for b in unpacked[8])
-        bluetooth_version = unpacked[9]
-        model, oem, is_support_monitor = unpacked[10:13]
-        emb_max_width, emb_max_height = unpacked[13:15]
-        model_code = unpacked[15].decode("ascii").strip()
-
-        return cls(
-            software_version, auto_cut, jumping_cut, buzzer, foot_height,
-            serial_number, no, product_id, mac_address, bluetooth_version,
-            model, oem, is_support_monitor, emb_max_width, emb_max_height, model_code
-        )
-
-@dataclass
-class ServiceInfo:
-    service_count: int
-    total_count: int
-
-    @classmethod
-    def from_bytes(cls, service_bytes: bytes):
-        if len(service_bytes) < 8:
-            raise ValueError("Service bytes length must be at least 8 bytes")
-
-        service_count,total_count = struct.unpack("<II", service_bytes[:8])
-
-        return cls(service_count, total_count)
-
-
-
-"""
-+-------------+-----------+------------------------+------------+-----------------------------+
-| Byte Offset | Lunghezza | Campo                  | Tipo       | Note                        |
-+-------------+-----------+------------------------+------------+-----------------------------+
-| 0           | 1         | AutoCutValue           | byte       |                             |
-| 1           | 1         | JumpingCutValue        | byte       |                             |
-| 2           | 9         | SerialNumber           | ASCII      |                             |
-| 11          | 1         | No                     | byte       | esadecimale                 |
-| 12          | 4         | ProductId              | uint32     |                             |
-| 16          | 6         | MacAddress             | byte[6]    | formato MAC                 |
-| 22          | 2         | SoftwareMinorVersion   | int16      | diviso per 100              |
-| 24          | 2         | BlueToothVersion       | int16      |                             |
-| 26          | 1         | Model                  | byte       |                             |
-| 27          | 1         | OEM                    | byte       |                             |
-| 28          | 1         | IsSupportMonitor       | byte       |                             |
-| 29          | 2         | EmbMaxWidth            | int16      |                             |
-| 31          | 2         | EmbMaxHeight           | int16      |                             |
-| 33          | 2         | (Ignorato?)            | ?          |                             |
-| 35          | 2         | SoftwareVersionSuffix  | int16      | accodato come stringa       |
-| 37          | 2         | (Ignorato?)            | ?          |                             |
-| 39          | 11        | ModelCode              | ASCII      |                             |
-+-------------+-----------+------------------------+------------+-----------------------------+
-
-"""
-from dataclasses import dataclass
-from typing import ClassVar
 import struct
 
+
+'''
+    private const int FEED_DATA = 1;
+    private const int CUT_DATA = 2;
+    private const int COLOR_END = 3;
+    private const int DATA_END = 5;
+'''
+
+'''
+XXXXXXXX XXXXXFFF YYYYYYYY YYYYYfff
+
+X little endian X coordinate, absolute
+F flag for COLOR(3) end or DATA end(5)
+Y little endian Y coordinate, absolute
+f if feed=1, if cut = 2 , jump = feed+cut =
+'''
+class Section(Enum):
+    END = 5
+    END_COLOR = 3
+
+class Operation(Enum):
+    STITCH = 0
+    FEED = 1
+    CUT = 2
+    JUMP = 3
+
+
+
 @dataclass
-class BLEDeviceInfo:
-    auto_cut: int
-    jumping_cut: int
-    serial_number: str
-    no: int
-    product_id: int
-    mac_address: str
-    sw_minor: float
-    bluetooth_version: int
-    model: int
-    oem: int
-    support_monitor: int
-    emb_max_width: int
-    emb_max_height: int
-    sw_suffix: int
-    model_code: str
-
-    FORMAT: ClassVar[str] = "<BB9sB I h h B B B h h x h 2x 11s"
-    INFO_SIZE: ClassVar[int] = struct.calcsize(FORMAT)  # Should be 50
-
+class Command:
+    x: int
+    y: int
+    op: Operation
+    se: Section
+    
     @classmethod
-    def from_bytes(cls, data: bytes) -> "BLEDeviceInfo":
-        if len(data) < cls.INFO_SIZE:
-            raise ValueError("Data too short")
-
-        unpacked = struct.unpack(cls.FORMAT, data[:cls.INFO_SIZE])
-
-        (
-            auto_cut,
-            jumping_cut,
-            serial_bytes,
-            no,
-            product_id,
-            sw_minor_raw,
-            bluetooth_version,
-            model,
-            oem,
-            support_monitor,
-            emb_max_width,
-            emb_max_height,
-            sw_suffix,
-            model_code_bytes
-        ) = unpacked
-
-        serial_number = serial_bytes.decode("ascii")
-        mac_bytes = data[16:22]
-        mac_address = ":".join(f"{b:02X}" for b in mac_bytes)
-        sw_minor = round(sw_minor_raw / 100.0, 2)
-        model_code = model_code_bytes.decode("ascii").rstrip("\x00")
-
+    def from_byte(cls, data):
+        x,y = struct.unpack('<hh',data)
+       
         return cls(
-            auto_cut, jumping_cut, serial_number, no, product_id,
-            mac_address, sw_minor, bluetooth_version,
-            model, oem, support_monitor,
-            emb_max_width, emb_max_height, sw_suffix,
-            model_code
+            x >> 3,
+            y >> 3,
+            Section(x & 0x07),
+            Operation(y & 0x07)
         )
+    
+    @classmethod
+    def from_bytes(cls, data):
+        cmds = []
+        for x,y in struct.iter_unpack('<hh',data):
+            cmds.append(
+                cls(
+                    x >> 3,
+                    y >> 3,
+                    Section(x & 0x07),
+                    Operation(y & 0x07)
+                ))
+        return cmds
 
-    def to_bytes(self) -> bytes:
-        serial_bytes = self.serial_number.encode("ascii").ljust(9, b'\x00')
-        model_code_bytes = self.model_code.encode("ascii").ljust(11, b'\x00')
-        mac_bytes = bytes(int(b, 16) for b in self.mac_address.split(":"))
-
-        # Create a placeholder for the entire structure
-        data = bytearray(self.INFO_SIZE)
-
-        # Fill the mac address manually (still necessary, not part of struct)
-        data[16:22] = mac_bytes
-
-        struct.pack_into(
-            self.FORMAT, data, 0,
-            self.auto_cut,
-            self.jumping_cut,
-            serial_bytes,
-            self.no,
-            self.product_id,
-            int(self.sw_minor * 100),
-            self.bluetooth_version,
-            self.model,
-            self.oem,
-            self.support_monitor,
-            self.emb_max_width,
-            self.emb_max_height,
-            self.sw_suffix,
-            model_code_bytes
-        )
-
-        return bytes(data)
-
-
-class EmbroideryMachine:
-    def __init__(self, client):
-        self.client = client
-        #client.connect()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, type, value, traceback):
-        await self.client.disconnect()
-
-    @staticmethod
-    def build_cmd(cmd: bytearray , data: bytearray) -> bytearray:
-        buffer = cmd
-        if data:
-            buffer += data
-        logger.trace("From: {} and {} -> 0x{}", cmd, data, buffer.hex())
-        return buffer
-
-    async def send(self, cmd: bytearray, data: bytearray = b'') -> None:
-        await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=True)
-        logger.trace("BTSend: {}(0x{})", cmd.hex(), data.hex())
-
-    async def receive(self) -> bytearray:
-        value = await self.client.read_gatt_char(READ_CHAR_UUID)
-        logger.trace("BTReceive: 0x{}",value.hex())
-        return value
-
-    async def request(self, cmd: bytearray, data: bytearray = b'') -> bytearray:
-        await self.send(cmd,data)
-        return await self.receive()
-
-    async def command(self, cmd: bytearray, data: bytearray = b'') -> None:
-        await self.send(cmd, data)
-        logger.debug("BT command: 0x{} (data=0x{}))", cmd.hex(), data.hex() )
-
-    async def machine_request(self, cmd: MachineCommand, data: bytearray = b'') -> bytearray:
-        response = await self.request(cmd.to_bytes(), data)
-        with logger.contextualize(cmd=cmd, data=data, response=response):
-            if not response:
-                logger.error("No data has returned", cmd.name)
-                return b''
-
-            if len(response) < 2:
-                logger.error("Response too short, received only: 0x{}", cmd.name, data.hex(), response.hex())
-
-            if cmd.to_bytes() == response[:2]:
-                logger.success("MachineCommand.{}(0x{}) -> 0x{}", cmd.name, data.hex(), response.hex())
-                return response[2:]
-
-            logger.error("First data section does not match the cmd", cmd.name, data.hex(), response.hex())
-        return b''
-
-
-    @property
-    async def machine_info(self) -> MachineInfo:
-        if data := await self.machine_request(MachineCommand.MACHINE_INFO):
-            return MachineInfo.from_bytes(data)
-
-    @property
-    async def service_info(self) -> ServiceInfo:
-        if data := await self.machine_request(MachineCommand.SERVICE_COUNT):
-            return ServiceInfo.from_bytes(data)
-
-    @property
-    async def machine_state(self) -> ServiceInfo:
-        if data := await self.machine_request(MachineCommand.MACHINE_STATE):
-            return SewingMachineStatus(data[0])
-
-    @property
-    async def pattern_uuid(self) -> str:
-        if data := await self.machine_request(MachineCommand.PATTERN_UUID):
-            return str(data)
-
-    @pattern_uuid.setter
-    async def pattern_uuid(self, uuid:bytearray) -> None:
-        data = await self.machine_request(MachineCommand.SEND_UUID, uuid)
-        if len(data) > 0 and data[0] == 1:
-            logger.success("the UUID: {} was written successfully", uuid)
-        logger.error("the UUID: {} failed", uuid)
-
-
-    async def set_stitch_index(self, index: int) -> int:
-        await self.machine_request(MachineCommand.SET_NEEDLE_MODE, bytes(index))
-
-
-    async def reset_settings(self) -> None:
-        data = await self.machine_request(MachineCommand.RESET_SETTINGS)
-        if len(data) > 0 and data[0] != 0:
-            logger.error("Configuration reset failed")
-            return
-        logger.success("Configuration reset completed successfully")
-
-    async def clear_error(self) -> None:
-        await self.machine_request(MachineCommand.CLEAR_ERROR)
-        logger.success("Error cleared")
-
-    async def get_error_logs(self) -> bytearray:
-        data = await self.machine_request(MachineCommand.ERROR_LOG)
-        logger.info("Machine error logs: {}", str(data))
+    def to_byte(self):
+        return struct.pack('<hh',(self.x << 3) | self.se, (self.y << 3) | self.op )
+    
+    @classmethod
+    def to_bytes(cls, list):
+        data = b''
+        for point in list:
+          data += point.to_byte()
         return data
+    
 
-    async def delete_emboridery(self):
-        if not await self.machine_request(MachineCommand.DELETE_EMBROIDERY):
-            logger.error("Embroidery deletition failed")
-            return
-        logger.success("Embroidery deletition completed successfully")
+import struct
+from dataclasses import dataclass
 
-    async def resume_emboridery(self) -> None:
-        data = await self.machine_request(MachineCommand.RESUME_EMBROIDERY)
-        if len(data) > 0 and data[0] != 0:
-            logger.error("Resume embroidery failed")
-            return
-        logger.success("Resume embroidery completed successfully")
-
-    async def resume_emboridery(self) -> bool:
-        data = await self.machine_request(MachineCommand.RESUME_FLAG)
-        if len(data) > 0:
-            flag = data[0] == 1
-            logger.success("The embroidery resume flag is: ", flag)
-            return flag
-        logger.error("Resume embroidery failed")
-        return False
