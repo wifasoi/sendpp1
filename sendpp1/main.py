@@ -48,7 +48,7 @@ def read(device_address):
     async def read_characteristic():
         async with BleakClient(device_address) as client:
             #await client.connect()
-            await client.get_services()
+            service = await client.services
             if await client.is_connected():
                 print(f"Connected to {device_address}")
                 async with EmbroideryMachine(client) as e:

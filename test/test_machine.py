@@ -1,52 +1,78 @@
+from ast import Assert
 import pytest
 from sendpp1.machine import EmbroideryMachine, MachineCommand, SewingMachineStatus
 import bleak
 import asyncio
-
+import uuid
+from unittest.mock import MagicMock, AsyncMock
 from loguru import logger
 import sys
 
-BROTHER_MAC="1a:4b:e8"
+
+DUT_MAC="DE:AD:BE:EF"
 
 logger.add(sys.stdout, level="TRACE", colorize=True, backtrace=True, diagnose=True)
 
+def build_response(command: MachineCommand, *data: bytearray):
+  return command.to_bytes() + b''.join(data)
+
+def mock_gatt_response(fixture, command: MachineCommand, *data: bytearray):
+  fixture.read_gatt_char.return_value = command.to_bytes() + b''.join(data)
 
 
-class MockGATTClient:
-  def __init__(self):
-    self.buffer = b''
-
-  def __ainit__(self):
-    self.buffer = b''
-
-  async def write_gatt_char(self,uuid, data,*, response=False):
-    match MachineCommand(int.from_bytes(data[:2],byteorder='big')):
-      case MachineCommand.MACHINE_STATE:
-        self.buffer = data[:2]
-        self.buffer += SewingMachineStatus.SewingWaitNoData.value.to_bytes()
-        self.buffer += b'\x00'
-
-  async def read_gatt_char(self,uuid):
-    return self.buffer
-
-  async def __aenter__(self):
-    return self
-
-  async def __aexit__(self,exc_type,exc_val,exc_tb):
-    pass
-
-  def disconnect(self):
-    pass
+def yield_transactions(*responses):
+  for x in responses:
+    yield x
 
 @pytest.fixture
-def mock_client(monkeypatch):
-    def mock(*args, **kwargs):
-        return MockGATTClient()
-    monkeypatch.setattr("bleak.BleakClient", mock )
+def mock_bt_response(request,mocker):
+    # Patch the original class
+    mock_client_class = mocker.patch('bleak.BleakClient')
+    mock_instance = AsyncMock()
+    mock_instance.__aenter__.return_value = mock_instance  # Return itself when entered
+    mock_instance.disconnect = MagicMock()
+    mock_instance.read_gatt_char.return_value = next(request.param)
+    mock_client_class.return_value = mock_instance
+    yield mock_instance
 
+
+
+@pytest.mark.parametrize('mock_bt_response', [
+    yield_transactions(build_response(MachineCommand.MACHINE_STATE, SewingMachineStatus.SewingWaitNoData.value.to_bytes(), b'\00'))
+  ]
+  ,indirect=True)
 @pytest.mark.asyncio
-async def test_machine_get_state(mock_client):
-
-  async with bleak.BleakClient("device_address") as client:
+async def test_get_state(mock_bt_response):
+  async with bleak.BleakClient(DUT_MAC) as client:
     with EmbroideryMachine(client) as e:
-      state = await e.machine_state
+      data = await e.machine_state
+      assert data == SewingMachineStatus.SewingWaitNoData
+
+
+@pytest.mark.parametrize('mock_bt_response', [yield_transactions(build_response(MachineCommand.PATTERN_UUID,uuid.UUID('2acc7752-16f5-11f0-9cd2-0242ac120002').bytes))],indirect=True)
+@pytest.mark.asyncio
+async def test_machine_get_uuid(mock_bt_response):
+  async with bleak.BleakClient(DUT_MAC) as client:
+    with EmbroideryMachine(client) as e:
+      id = await e.pattern_uuid
+      assert id == uuid.UUID('2acc7752-16f5-11f0-9cd2-0242ac120002')
+
+def get_transaction():
+  response = [
+    build_response(MachineCommand.PREPARE_TRANSFER,b'\0'),
+    build_response(MachineCommand.DATA_PACKET,b'\x02'),
+    build_response(MachineCommand.DATA_PACKET,b'\x00'),
+  ]
+  for x in response:
+    yield x
+
+@pytest.mark.parametrize('mock_bt_response', [yield_transactions(
+    build_response(MachineCommand.PREPARE_TRANSFER,b'\0'),
+    build_response(MachineCommand.DATA_PACKET,b'\x02'),
+    build_response(MachineCommand.DATA_PACKET,b'\x00'),)],indirect=True)
+@pytest.mark.asyncio
+async def test_machine_transfer(mock_bt_response):
+  async with bleak.BleakClient(DUT_MAC) as client:
+    with EmbroideryMachine(client) as e:
+      await e.transfer(b'\x01'*20)
+

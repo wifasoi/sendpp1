@@ -15,10 +15,14 @@ dependencies = [
 test = [
     "pytest",
     "pytest-asyncio",
+    "pytest-mock",
 ]
 
 [scripts]
 sendpp1 = "sendpp1:cli"
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
 
 [build-system]
 requires = ["setuptools", "wheel"]
