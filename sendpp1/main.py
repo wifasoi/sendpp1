@@ -48,18 +48,18 @@ def read(device_address):
     async def read_characteristic():
         async with BleakClient(device_address) as client:
             #await client.connect()
-            service = await client.services
-            if await client.is_connected():
+            #service = client.services
+            if client.is_connected:
                 print(f"Connected to {device_address}")
                 async with EmbroideryMachine(client) as e:
                     print("strating shenanigans")
                     while True:
-                        #info = await e.machine_info
-                        state = await e.machine_state
-                        #print(info)
-                        print(state)
-                        state = await e.get_error_logs()
-                        print(state)
+                        info = await e.machine_info
+                        #state = await e.machine_state
+                        print(info)
+                        #print(state)
+                        # state = await e.error_logs
+                        # print(state)
                         await asyncio.sleep(1)
 
     asyncio.run(read_characteristic())

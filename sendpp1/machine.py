@@ -267,6 +267,7 @@ class FrameType(Enum):
     Frame70 = 0
     Frame100 = 1
 
+#TODO
 class FootHeightVaule(Enum):
     LOW = 1
     MEDIUM = 2
@@ -358,60 +359,138 @@ class MachineSetting:
 +-------------+-----------+------------------------+------------+-----------------------------+
 
 """
+# @dataclass
+# class MachineInfo:
+#     software_version: int
+#     auto_cut: int
+#     jumping_cut: int
+#     buzzer: int
+#     foot_height: int
+#     serial_number: str
+#     no: int
+#     product_id: int
+#     mac_address: str
+#     bluetooth_version: int
+#     model: int
+#     oem: int
+#     is_support_monitor: int
+#     emb_max_width: int
+#     emb_max_height: int
+#     model_code: str
+
+#     @classmethod
+#     def from_bytes(cls, info_bytes: bytes):
+#         if len(info_bytes) < 50:
+#             raise ValueError("Info bytes length must be at least 50 bytes")
+#         logger.trace("Converting {} bytes into MachineInfo dataclass", len(info_bytes))
+#         #unpacked = struct.unpack("<H4B9sB I 6s H B B B H H 6x 11s", info_bytes)
+#         unpacked = struct.unpack("<??9sBI6BhhBBBhh2xh2x11s", info_bytes)
+
+#         software_version = unpacked[0]
+#         auto_cut = unpacked[1:5]
+#         jumping_cut = unpacked[1:5]
+#         buzzer = unpacked[1:5]
+#         foot_height = unpacked[1:5]
+#         serial_number = unpacked[5]
+#         no = unpacked[6]
+#         product_id = unpacked[7]
+#         #mac_address = ":".join(f"{b:02X}" for b in unpacked[8])
+#         mac_address = unpacked[8]
+#         bluetooth_version = unpacked[9]
+#         model, oem, is_support_monitor = unpacked[10:13]
+#         emb_max_width, emb_max_height = unpacked[13:15]
+#         model_code = unpacked[15]
+
+
+#         return cls(
+#             software_version, auto_cut, jumping_cut, buzzer, foot_height,
+#             serial_number, no, product_id, mac_address, bluetooth_version,
+#             model, oem, is_support_monitor, emb_max_width, emb_max_height, model_code
+#         )
+
+#     def to_machine_setting(self) -> MachineSetting:
+#         """
+#         Convert the current MachineInfo instance to a MachineSetting instance
+#         based on matching field names, with type conversions for bool and enum.
+#         """
+#         return MachineSetting(
+#             auto_cut=bool(self.auto_cut),  # Convert to boolean
+#             jumping_cut=bool(self.jumping_cut),  # Convert to boolean
+#             buzzer=bool(self.buzzer),  # Convert to boolean
+#             foot_height=FootHeightVaule(self.foot_height),  # Convert to FootHeightVaule enum
+#             sewing_speed=400  # Example static value for sewing speed, can be customized if needed
+#         )
+
+"""
++-------------+-----------+------------------------+------------+-----------------------------+
+| Byte Offset | Lunghezza | Campo                  | Tipo       | Note                        |
++-------------+-----------+------------------------+------------+-----------------------------+
+| 0           | 1         | AutoCut                | Bool       |                             |
+| 1           | 1         | SoftwareVersion        | Short      | Majour = /100 minor=reminder|            |
+| 3           | 9         | SerialNumber           | String     |                             |
+| 16          | 6         | MacAddress             | String     | hex                         |
+| 24          | 1         | BlueToothVersion       | Int8       |                             |
+| 26          | 1         | Model                  | Int8       |                             |
+| 27          | 1         | OEM                    | Int8       |                             |
+| 28          | 1         | IsSupportMonitor       | Bool       |                             |
+| 29          | 2         | MaxWidth               | Int16      |                             |
+| 31          | 2         | MaxHeight              | Int16      |                             |
+| 39          | 11        | ModelCode              | String     |                             |
++-------------+-----------+------------------------+------------+-----------------------------+
+"""
 @dataclass
 class MachineInfo:
-    software_version: int
-    auto_cut: int
-    jumping_cut: int
-    buzzer: int
-    foot_height: int
-    serial_number: str
-    no: int
-    product_id: int
-    mac_address: str
-    bluetooth_version: int
-    model: int
-    oem: int
-    is_support_monitor: int
-    emb_max_width: int
-    emb_max_height: int
-    model_code: str
+    AutoCut: bool
+    SoftwareVersion: int
+    SerialNumber: str
+    MacAddress: str
+    BlueToothVersion: int
+    Model: int
+    OEM: int
+    IsSupportMonitor: bool
+    MaxWidth: int
+    MaxHeight: int
+    ModelCode: str
 
     @classmethod
-    def from_bytes(cls, info_bytes: bytes):
-        if len(info_bytes) < 50:
-            raise ValueError("Info bytes length must be at least 50 bytes")
+    def from_bytes(cls, data: bytes) -> Self:
+        if len(data) < 50:
+            raise ValueError("Data is too short to parse DeviceInfoV4")
 
-        unpacked = struct.unpack("<H4B9sB I 6s H B B B H H 6x 11s", info_bytes[:50])
-
-        software_version = unpacked[0]
-        auto_cut, jumping_cut, buzzer, foot_height = unpacked[1:5]
-        serial_number = unpacked[5].decode("ascii").strip()
-        no = unpacked[6]
-        product_id = unpacked[7]
-        mac_address = ":".join(f"{b:02X}" for b in unpacked[8])
-        bluetooth_version = unpacked[9]
-        model, oem, is_support_monitor = unpacked[10:13]
-        emb_max_width, emb_max_height = unpacked[13:15]
-        model_code = unpacked[15].decode("ascii").strip()
-
-        return cls(
-            software_version, auto_cut, jumping_cut, buzzer, foot_height,
-            serial_number, no, product_id, mac_address, bluetooth_version,
-            model, oem, is_support_monitor, emb_max_width, emb_max_height, model_code
+        unpacked = struct.unpack_from(
+            '<? B 9s 5x 6s 2x b x bb? hh xxx 11s', data
         )
 
-    def to_machine_setting(self) -> MachineSetting:
-        """
-        Convert the current MachineInfo instance to a MachineSetting instance
-        based on matching field names, with type conversions for bool and enum.
-        """
-        return MachineSetting(
-            auto_cut=bool(self.auto_cut),  # Convert to boolean
-            jumping_cut=bool(self.jumping_cut),  # Convert to boolean
-            buzzer=bool(self.buzzer),  # Convert to boolean
-            foot_height=FootHeightVaule(self.foot_height),  # Convert to FootHeightVaule enum
-            sewing_speed=400  # Example static value for sewing speed, can be customized if needed
+        (
+            AutoCut,
+            SoftwareVersion,
+            serial_raw,
+            mac_raw,
+            BlueToothVersion,
+            Model,
+            OEM,
+            IsSupportMonitor,
+            MaxWidth,
+            MaxHeight,
+            model_code_raw
+        ) = unpacked
+
+        SerialNumber = serial_raw.decode('utf-8', errors='ignore').strip('\x00')
+        MacAddress = ':'.join(f'{b:02X}' for b in mac_raw)
+        ModelCode = model_code_raw.decode('utf-8', errors='ignore').strip('\x00')
+
+        return cls(
+            AutoCut,
+            SoftwareVersion,
+            SerialNumber,
+            MacAddress,
+            BlueToothVersion,
+            Model,
+            OEM,
+            IsSupportMonitor,
+            MaxWidth,
+            MaxHeight,
+            ModelCode
         )
 
 """
@@ -574,7 +653,7 @@ class EmbroideryMachine:
         logger.trace("From: {} and {} -> 0x{}", cmd, data, buffer.hex())
         return buffer
 
-    async def send(self, cmd: bytearray, data: bytearray = b'', response=False) -> None:
+    async def send(self, cmd: bytearray, data: bytearray = b'', response=True) -> None:
         await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=response)
         logger.trace("BTSend: {}(0x{})", cmd.hex(), data.hex())
 
