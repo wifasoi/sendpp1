@@ -77,7 +77,7 @@ async def test_machine_transfer(mock_bt_response):
       await e.transfer(b'\x01'*20)
 
 
-
+"0x000000684734503635383838376101bc2a7094ddf81a4be800640065020101e803e8030100000000003838385230303530323031"
 @pytest.mark.parametrize('mock_bt_response', [yield_transactions(
       build_response(MachineCommand.MACHINE_INFO,bytes.fromhex("000000684734503635383838376101bc2a7094ddf81a4be800640065020101e803e8030100000000003838385230303530323031")),
     )]
