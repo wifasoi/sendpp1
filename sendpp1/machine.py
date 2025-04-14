@@ -268,7 +268,7 @@ class FrameType(Enum):
     Frame100 = 1
 
 #TODO
-class FootHeightVaule(Enum):
+class FootHeight(Enum):
     LOW = 1
     MEDIUM = 2
     HIGH = 3
@@ -288,51 +288,31 @@ class MachineSetting:
     auto_cut: bool
     jumping_cut: bool
     buzzer: bool
-    foot_height: FootHeightVaule
+    foot_height: FootHeight
     sewing_speed: int
 
-    def to_bytes(self) -> bytearray:
-        byte_list = bytearray()
-
-        # Pack AutoCut (1 byte, boolean as 1 or 0)
-        byte_list.append(1 if self.auto_cut else 0)
-        
-        # Pack JumpingCut (1 byte, boolean as 1 or 0)
-        byte_list.append(1 if self.jumping_cut else 0)
-        
-        # Pack Buzzer (1 byte, always 1 for True)
-        byte_list.append(1 if self.buzzer else 0)
-        
-        # Pack FootHeight (1 byte, enum value)
-        byte_list.append(self.foot_height.value)
-        
-        # Pack SewingSpeed (2 bytes, short little-endian)
-        byte_list.extend(struct.pack('<h', self.sewing_speed))
-
-        return byte_list
+    def to_bytes(self) -> bytes:
+        return struct.pack(
+            '<???Bh',
+            self.auto_cut,
+            self.jumping_cut,
+            self.buzzer,
+            self.foot_height.value,
+            self.sewing_speed
+        )
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        # Ensure data is at least 6 bytes
-        if len(data) < 6:
-            raise ValueError("Insufficient data length for MachineSetting")
-
-        # Unpack AutoCut (1 byte)
-        auto_cut = data[0] == 1
-        
-        # Unpack JumpingCut (1 byte)
-        jumping_cut = data[1] == 1
-        
-        # Unpack Buzzer (1 byte)
-        buzzer = data[2] == 1
-        
-        # Unpack FootHeight (1 byte)
-        foot_height = FootHeightVaule(data[3])  # Convert byte to Enum
-        
-        # Unpack SewingSpeed (2 bytes, short little-endian)
-        sewing_speed = struct.unpack('<h', data[4:6])[0]
-
-        return cls(auto_cut, jumping_cut, buzzer, foot_height, sewing_speed)
+        if len(data) != 6:
+            raise ValueError("Data must be exactly 6 bytes long")
+        fields = struct.unpack('<???Bh', data)
+        return cls(
+            auto_cut=fields[0],
+            jumping_cut=fields[1],
+            buzzer=fields[2],
+            foot_height=FootHeight(fields[3]),
+            sewing_speed=fields[4]
+        )
 
 
 """
@@ -359,73 +339,12 @@ class MachineSetting:
 +-------------+-----------+------------------------+------------+-----------------------------+
 
 """
-# @dataclass
-# class MachineInfo:
-#     software_version: int
-#     auto_cut: int
-#     jumping_cut: int
-#     buzzer: int
-#     foot_height: int
-#     serial_number: str
-#     no: int
-#     product_id: int
-#     mac_address: str
-#     bluetooth_version: int
-#     model: int
-#     oem: int
-#     is_support_monitor: int
-#     emb_max_width: int
-#     emb_max_height: int
-#     model_code: str
 
-#     @classmethod
-#     def from_bytes(cls, info_bytes: bytes):
-#         if len(info_bytes) < 50:
-#             raise ValueError("Info bytes length must be at least 50 bytes")
-#         logger.trace("Converting {} bytes into MachineInfo dataclass", len(info_bytes))
-#         #unpacked = struct.unpack("<H4B9sB I 6s H B B B H H 6x 11s", info_bytes)
-#         unpacked = struct.unpack("<??9sBI6BhhBBBhh2xh2x11s", info_bytes)
-
-#         software_version = unpacked[0]
-#         auto_cut = unpacked[1:5]
-#         jumping_cut = unpacked[1:5]
-#         buzzer = unpacked[1:5]
-#         foot_height = unpacked[1:5]
-#         serial_number = unpacked[5]
-#         no = unpacked[6]
-#         product_id = unpacked[7]
-#         #mac_address = ":".join(f"{b:02X}" for b in unpacked[8])
-#         mac_address = unpacked[8]
-#         bluetooth_version = unpacked[9]
-#         model, oem, is_support_monitor = unpacked[10:13]
-#         emb_max_width, emb_max_height = unpacked[13:15]
-#         model_code = unpacked[15]
-
-
-#         return cls(
-#             software_version, auto_cut, jumping_cut, buzzer, foot_height,
-#             serial_number, no, product_id, mac_address, bluetooth_version,
-#             model, oem, is_support_monitor, emb_max_width, emb_max_height, model_code
-#         )
-
-#     def to_machine_setting(self) -> MachineSetting:
-#         """
-#         Convert the current MachineInfo instance to a MachineSetting instance
-#         based on matching field names, with type conversions for bool and enum.
-#         """
-#         return MachineSetting(
-#             auto_cut=bool(self.auto_cut),  # Convert to boolean
-#             jumping_cut=bool(self.jumping_cut),  # Convert to boolean
-#             buzzer=bool(self.buzzer),  # Convert to boolean
-#             foot_height=FootHeightVaule(self.foot_height),  # Convert to FootHeightVaule enum
-#             sewing_speed=400  # Example static value for sewing speed, can be customized if needed
-#         )
 
 """
 +-------------+-----------+------------------------+------------+-----------------------------+
 | Byte Offset | Lunghezza | Campo                  | Tipo       | Note                        |
 +-------------+-----------+------------------------+------------+-----------------------------+
-| 0           | 1         | AutoCut                | Bool       |                             |
 | 1           | 1         | SoftwareVersion        | Short      | Majour = /100 minor=reminder|            |
 | 3           | 9         | SerialNumber           | String     |                             |
 | 16          | 6         | MacAddress             | String     | hex                         |
@@ -440,7 +359,6 @@ class MachineSetting:
 """
 @dataclass
 class MachineInfo:
-    AutoCut: bool
     SoftwareVersion: int
     SerialNumber: str
     MacAddress: str
@@ -458,11 +376,10 @@ class MachineInfo:
             raise ValueError("Data is too short to parse DeviceInfoV4")
 
         unpacked = struct.unpack_from(
-            '<? B 9s 5x 6s 2x b x bb? hh xxx 11s', data
+            '<x B 9s 5x 6s 2x b x bb? hh xxx 11s', data
         )
 
         (
-            AutoCut,
             SoftwareVersion,
             serial_raw,
             mac_raw,
@@ -480,7 +397,6 @@ class MachineInfo:
         ModelCode = model_code_raw.decode('utf-8', errors='ignore').strip('\x00')
 
         return cls(
-            AutoCut,
             SoftwareVersion,
             SerialNumber,
             MacAddress,
@@ -492,6 +408,8 @@ class MachineInfo:
             MaxHeight,
             ModelCode
         )
+
+
 
 """
 +-------------+-----------+---------------+----------+-----------------------------+
@@ -709,8 +627,7 @@ class EmbroideryMachine:
             logger.trace("UUID: 0x{}", data.hex())
             return UUID(bytes=bytes(data))
 
-    @pattern_uuid.setter
-    async def pattern_uuid(self, uuid:UUID) -> None:
+    async def set_pattern_uuid(self, uuid:UUID) -> None:
         data = await self.machine_request(MachineCommand.SEND_UUID, uuid.bytes_le)
         if len(data) > 0 and data[0] == 1:
             logger.success("the UUID: {} was written successfully", uuid)
@@ -748,15 +665,15 @@ class EmbroideryMachine:
     async def error_logs(self) -> bytearray:
         data = await self.machine_request(MachineCommand.ERROR_LOG)
         logger.info("Machine error logs: {}", str(data))
-        return data
+        return data[2:]
 
     @property
     async def machine_settings(self) -> MachineSetting:
-        return self.machine_info.to_machine_setting()
+        settings = await self.machine_request(MachineCommand.MACHINE_SETTINGS)
+        return MachineSetting.from_bytes(settings)
 
-    @machine_settings.setter
-    async def machine_settings(self, settings: MachineSetting) -> None:
-        await self.machine_request(MachineCommand.MACHINE_SETTINGS, settings.to_bytes())
+    async def set_machine_settings(self, settings: MachineSetting) -> None:
+        await self.machine_request(MachineCommand.SEND_HOST_SETTINGS, settings.to_bytes())
         logger.success("Apply new settings: {}", settings)
 
     async def set_stitch_index(self, index: int) -> int:

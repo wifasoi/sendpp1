@@ -1,6 +1,6 @@
 from ast import Assert
 import pytest
-from sendpp1.machine import EmbroideryMachine, MachineCommand, SewingMachineStatus
+from sendpp1.machine import EmbroideryMachine, MachineCommand, SewingMachineStatus, FootHeight, MachineSetting
 import bleak
 import asyncio
 import uuid
@@ -30,7 +30,7 @@ def mock_bt_response(request,mocker):
     mock_client_class = mocker.patch('bleak.BleakClient')
     mock_instance = AsyncMock()
     mock_instance.__aenter__.return_value = mock_instance  # Return itself when entered
-    mock_instance.disconnect = MagicMock()
+    mock_instance.disconnect = AsyncMock()
     mock_instance.read_gatt_char.return_value = next(request.param)
     mock_client_class.return_value = mock_instance
     yield mock_instance
@@ -87,3 +87,23 @@ async def test_machine_transfer(mock_bt_response):
   async with bleak.BleakClient(DUT_MAC) as client:
     with EmbroideryMachine(client) as e:
       await e.machine_info
+
+
+"0x0c02010101019001"
+
+@pytest.mark.parametrize('mock_bt_response', [yield_transactions(
+      build_response(MachineCommand.MACHINE_SETTINGS,bytes.fromhex("010101019001")),
+      build_response(MachineCommand.SEND_HOST_SETTINGS),
+      build_response(MachineCommand.MACHINE_SETTINGS,bytes.fromhex("000101019001")),
+    )]
+    ,indirect=True)
+@pytest.mark.asyncio
+async def test_machine_transfer(mock_bt_response):
+  async with bleak.BleakClient(DUT_MAC) as client:
+    async with EmbroideryMachine(client) as e:
+      info = await e.machine_settings
+      print(info)
+      assert info == MachineSetting(auto_cut=True, jumping_cut=True, buzzer=True, foot_height=FootHeight.LOW, sewing_speed=400)
+      info.auto_cut = False
+      await e.set_machine_settings(info)
+      assert info == await e.machine_settings
