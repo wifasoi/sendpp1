@@ -8,7 +8,8 @@ dependencies = [
     "bleak>=0.21.1",
     "click>=8.0.0",
     "loguru",
-    "pyembroidery"
+    "pyembroidery",
+    "pyside6"
 ]
 
 [project.optional-dependencies]
