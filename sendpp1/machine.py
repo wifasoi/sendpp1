@@ -345,7 +345,7 @@ class MachineSetting:
 +-------------+-----------+------------------------+------------+-----------------------------+
 | Byte Offset | Lunghezza | Campo                  | Tipo       | Note                        |
 +-------------+-----------+------------------------+------------+-----------------------------+
-| 1           | 1         | SoftwareVersion        | Short      | Majour = /100 minor=reminder|            |
+| 1           | 1         | SoftwareVersion        | Short      | Majour = /100 minor=reminder|
 | 3           | 9         | SerialNumber           | String     |                             |
 | 16          | 6         | MacAddress             | String     | hex                         |
 | 24          | 1         | BlueToothVersion       | Int8       |                             |
@@ -476,6 +476,20 @@ class ServiceInfo:
 
 
 """
+byte[] array = Enumerable.ToArray<byte>(((IEnumerable<byte>) guidanceViewModel.Job.Layout.ToBytes()).Concat<byte>(guidanceViewModel.PointsToBytes(maskTranceBounds.TopLeft, maskTranceBounds.BottomRight, maskTranceBounds.CenterPoint)));
+    private byte[] PointsToBytes(params DoublePoint[] points)
+    {
+      return Enumerable.ToArray<byte>(Enumerable.SelectMany<DoublePoint, byte>((IEnumerable<DoublePoint>) points, new Func<DoublePoint, IEnumerable<byte>>(this.PointsToBytes)));
+    }
+
+    private byte[] PointsToBytes(DoublePoint point)
+    {
+      DoublePoint centerPoint = this.LayoutDelegate.Manager.CanvasManager.CanvasArea.CenterPoint;
+      return BitUtil.GetBytes(true, (short) ((point.X - centerPoint.X) / 10.0), (short) ((point.Y - centerPoint.Y) / 10.0));
+    }
+"""
+
+"""
 +-------------+-----------+---------+--------+-----------------------+
 | Byte Offset | Lunghezza | Campo   | Tipo   | Note                  |
 |-------------|-----------|---------|--------|-----------------------|
@@ -490,8 +504,8 @@ class ServiceInfo:
 """
 @dataclass
 class EmbroideryLayout:
-    MoveX: int
-    MoveY: int
+    MoveX: int = 0
+    MoveY: int = 0
     SizeX: int = 100
     SizeY: int = 100
     Rotate: int = 0
@@ -508,6 +522,32 @@ class EmbroideryLayout:
         move_x, move_y, size_x, size_y, rotate, filp, frame_byte = struct.unpack('<5h2B', data[:12])
         frame = FrameType(frame_byte)
         return cls(MoveX=move_x, MoveY=move_y, SizeX=size_x, SizeY=size_y, Rotate=rotate, Filp=filp, Frame=frame)
+
+
+"""
++-------------+-----------+---------------+--------+-----------------------+
+| Byte Offset | Lunghezza | Campo         | Tipo   | Note                  |
+|-------------|-----------|---------------|--------|-----------------------|
+| 4           | 2         | TopLeft_X     | Short  |                       |
+| 6           | 2         | TopLeft_Y     | Short  |                       |
+| 4           | 2         | BottomRight_X | Short  |                       |
+| 6           | 2         | BottomRight_Y | Short  |                       |
+| 8           | 2         | Center_X      | Short  |                       |
+| 10          | 2         | Center_Y      | Short  |                       |
++-------------+-----------+---------------+--------+-----------------------+
+"""
+@dataclass
+class EmbroideryBoundingBox:
+    top_left_X: int = 0
+    top_left_Y: int = 0
+    bottom_right_X: int = 0
+    bottom_righ_Y: int = 0
+    center_X: int = 0
+    center_Y: int = 0
+
+    def to_bytes(self) -> bytes:
+        return struct.pack('<6h', self.top_left_X, self.top_left_Y, self.bottom_right_X, self.bottom_righ_Y, self.center_X, self.center_Y)
+
 
 
 """
@@ -711,8 +751,8 @@ class EmbroideryMachine:
         logger.success("Starting embroidery completed successfully")
         #TODO: need to check the state change
 
-    async def send_layout(self, layout: EmbroideryLayout) -> None:
-        await self.machine_request(MachineCommand.LAYOUT_DATA, layout.to_bytes())
+    async def send_layout(self, layout: EmbroideryLayout, mask: EmbroideryBoundingBox) -> None:
+        await self.machine_request(MachineCommand.LAYOUT_DATA, layout.to_bytes() + mask.to_bytes())
         logger.success("Sended layout data")
 
     async def do_regular_inspection(self) -> None:

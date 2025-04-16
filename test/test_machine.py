@@ -1,6 +1,8 @@
 from ast import Assert
+from tkinter import Frame
+from types import FrameType
 import pytest
-from sendpp1.machine import EmbroideryMachine, MachineCommand, SewingMachineStatus, FootHeight, MachineSetting
+from sendpp1.machine import EmbroideryBoundingBox, EmbroideryLayout, EmbroideryMachine, MachineCommand, SewingMachineStatus, FootHeight, MachineSetting, FrameType
 import bleak
 import asyncio
 import uuid
@@ -107,3 +109,14 @@ async def test_machine_transfer(mock_bt_response):
       info.auto_cut = False
       await e.set_machine_settings(info)
       assert info == await e.machine_settings
+
+"07 05 00 00 00 00 64 00 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+@pytest.mark.parametrize('mock_bt_response', [yield_transactions(
+      build_response(MachineCommand.LAYOUT_DATA),
+    )]
+    ,indirect=True)
+@pytest.mark.asyncio
+async def test_send_layout(mock_bt_response):
+  async with bleak.BleakClient(DUT_MAC) as client:
+    async with EmbroideryMachine(client) as e:
+      await e.send_layout(EmbroideryLayout(Frame=FrameType.Frame70), EmbroideryBoundingBox())

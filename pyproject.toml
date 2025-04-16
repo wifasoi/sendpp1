@@ -9,7 +9,8 @@ dependencies = [
     "click>=8.0.0",
     "loguru",
     "pyembroidery",
-    "pyside6"
+    "pyside6",
+    "async-property"
 ]
 
 [project.optional-dependencies]
