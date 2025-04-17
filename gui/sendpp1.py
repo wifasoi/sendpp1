@@ -1,13 +1,15 @@
 from ctypes.macholib import dyld
 from dataclasses import dataclass
 import sys
+import pyembroidery
 from uuid import uuid1
 from PySide6.QtUiTools import QUiLoader
-from PySide6.QtWidgets import QApplication, QMainWindow, QGraphicsView
+from PySide6.QtWidgets import QApplication, QMainWindow, QGraphicsView, QFileDialog
 from PySide6.QtCore import QFile, QIODevice
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtGui import QTransform
 from PySide6.QtSvg import QSvgRenderer
+import pyembroidery.SvgWriter
 from sendpp1.machine import EmbroideryBoundingBox, EmbroideryLayout
 
 class Stitchwork:
@@ -19,7 +21,9 @@ class Stitchwork:
         self._flip = False
         self.file = file
         self.uuid = uuid1()
-        self.render =  QSvgRenderer(file)
+        self.pattern = pyembroidery.read(file)
+        dom = pyembroidery.SvgWriter.create_svg_dom(self.pattern)
+        self.render =  QSvgRenderer(dom)
         self.svg_item = QGraphicsSvgItem()
         self.svg_item.setSharedRenderer(self.render)
         canvas.addAction(self.svg_item)
@@ -27,7 +31,7 @@ class Stitchwork:
     @property
     def transform(self) -> QTransform:
         scale_factor = -1 if self.flip else 1
-        return QTransform().rotate(self._rotation).translate(self._dx,self._dy).scale(scale_factor, scale_factor)
+        return QTransform().translate(self._dx,self._dy).rotate(self._rotation).scale(scale_factor, scale_factor)
 
     def translate(self, x: int, y: int) -> None:
         self._dx = x
@@ -45,6 +49,7 @@ class Stitchwork:
         return self._transformation.determinant < 0
 
     def apply_transform(self, canvas: QGraphicsView) -> None:
+        raise NotImplementedError()
         canvas.setTransform(self.transform)
 
     def get_pp1_layout(self, frame) -> EmbroideryLayout:
@@ -73,6 +78,7 @@ class MyMainWindow(QMainWindow):
         ui_file.open(QFile.ReadOnly)
         self.gui = loader.load(ui_file, self)
         ui_file.close()
+        self.stitchworks =[]
 
     def connect_sockets(self):
         self.gui.RefreshButton.clicked.connect(self.refresh_config)
@@ -80,8 +86,16 @@ class MyMainWindow(QMainWindow):
     def refresh_config(self):
         pass
 
-    def import_stitchwork(self, file):
+    def import_stitchwork(self):
         draw_area: QGraphicsView = self.gui.StitchView
+        fileName = QFileDialog.getOpenFileName(
+            self.gui,
+            self.tr("Select an embroidery file"),
+            "",
+            filter=self.tr("Embroidery Files (*.dst *.exp *.jef *.pec *.pes *.sew *.vp3 *.xxx *.emd *.10o)"),
+            options=QFileDialog.Option.DontUseNativeDialog
+        )
+        self.stitchworks.append(Stitchwork(fileName, self.gui.StitchView))
 
 
 if __name__ == "__main__":
