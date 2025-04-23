@@ -88,9 +88,9 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton">
+        <widget class="QPushButton" name="bt_button">
          <property name="text">
-          <string>PushButton</string>
+          <string>Refresh</string>
          </property>
         </widget>
        </item>
@@ -98,6 +98,9 @@
      </item>
      <item>
       <widget class="QGroupBox" name="MachineConfig">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="sizePolicy">
         <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
          <horstretch>0</horstretch>
@@ -107,31 +110,71 @@
        <property name="title">
         <string>MachineConfig</string>
        </property>
+       <property name="flat">
+        <bool>false</bool>
+       </property>
+       <property name="checkable">
+        <bool>false</bool>
+       </property>
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
          <layout class="QVBoxLayout" name="verticalLayout">
+          <property name="sizeConstraint">
+           <enum>QLayout::SizeConstraint::SetMinimumSize</enum>
+          </property>
           <item>
-           <widget class="QCheckBox" name="checkBox">
+           <widget class="QCheckBox" name="AutoCut">
             <property name="layoutDirection">
              <enum>Qt::LayoutDirection::LeftToRight</enum>
             </property>
             <property name="text">
-             <string>CheckBox</string>
+             <string>Auto cut</string>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QCheckBox" name="checkBox_2">
+           <widget class="QCheckBox" name="JumpCut">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
-             <string>CheckBox</string>
+             <string>Jump cut</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QCheckBox" name="checkBox_3">
             <property name="text">
-             <string>CheckBox</string>
+             <string>Buzzer</string>
             </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout">
+          <item>
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>Foot Height:</string>
+            </property>
+            <property name="buddy">
+             <cstring>comboBox</cstring>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboBox">
+            <item>
+             <property name="text">
+              <string>Standard</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Low</string>
+             </property>
+            </item>
            </widget>
           </item>
          </layout>
@@ -231,15 +274,16 @@
  </widget>
  <tabstops>
   <tabstop>MachineSelection</tabstop>
-  <tabstop>pushButton</tabstop>
-  <tabstop>checkBox</tabstop>
-  <tabstop>checkBox_2</tabstop>
+  <tabstop>bt_button</tabstop>
+  <tabstop>AutoCut</tabstop>
+  <tabstop>JumpCut</tabstop>
   <tabstop>checkBox_3</tabstop>
+  <tabstop>comboBox</tabstop>
   <tabstop>spinBox</tabstop>
   <tabstop>RefreshButton</tabstop>
   <tabstop>SendButton</tabstop>
-  <tabstop>listWidget</tabstop>
   <tabstop>StitchView</tabstop>
+  <tabstop>listWidget</tabstop>
  </tabstops>
  <resources/>
  <connections/>

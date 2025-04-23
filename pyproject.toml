@@ -20,8 +20,15 @@ test = [
     "pytest-mock",
 ]
 
-[scripts]
-sendpp1 = "sendpp1:cli"
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["*.ui"]
+
+[project.scripts]
+sendpp1 = "sendpp1.core.main:cli"
+sendpp1-gui = "sendpp1.gui.sendpp1:main"
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"

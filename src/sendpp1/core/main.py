@@ -3,7 +3,7 @@ import click
 from click import ParamType
 from click.shell_completion import CompletionItem
 from bleak import BleakScanner, BleakClient
-from machine import EmbroideryMachine, MachineCommand
+from sendpp1.core.machine import EmbroideryMachine, MachineCommand
 from time import sleep
 from loguru import logger
 from uuid import UUID
@@ -76,7 +76,7 @@ import sys
 #     cli()
 
 
-from machine import (
+from sendpp1.core.machine import (
     EmbroideryMachine,
     MachineCommand,
     MachineSetting,
@@ -84,6 +84,7 @@ from machine import (
     EmbroideryMonitorInfo,
     WRITE_CHAR_UUID,
     READ_CHAR_UUID,
+    FrameType
 )
 
 @click.group()

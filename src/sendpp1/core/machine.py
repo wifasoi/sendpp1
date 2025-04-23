@@ -163,7 +163,6 @@ from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
-from pytest import param
 
 MAIN_SERVICE_UUID = "a76eb9e0-f3ac-4990-84cf-3a94d2426b2b"
 READ_CHAR_UUID = "A76EB9E1-F3AC-4990-84CF-3A94D2426B2B"
