@@ -12,7 +12,7 @@ from PySide6.QtCore import QFile, QIODevice
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtGui import QTransform
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtBluetooth import QBluetoothDeviceDiscoveryAgent
+from PySide6.QtBluetooth import QBluetoothDeviceDiscoveryAgent, QBluetoothDeviceInfo
 from PySide6.QtStateMachine import QStateMachine, QState
 import pyembroidery.SvgWriter
 from sendpp1.core.machine import EmbroideryBoundingBox, EmbroideryLayout
@@ -101,6 +101,7 @@ class MyMainWindow:
         self.ui.StitchView.setScene(self.scene)
         self. bt = QBluetoothDeviceDiscoveryAgent(self.ui)
         self.bt.setLowEnergyDiscoveryTimeout(10000)
+        self.bt_devices = {}
         self.connection_sm = QStateMachine(self.ui)
         self.setup_conenction_statemachine()
         self.connection_sm.start()
@@ -110,6 +111,7 @@ class MyMainWindow:
         self.ui.show()
 
     def connect_sockets(self):
+        self.bt.deviceDiscovered.connect(self.add_device)
         self.ui.actionImport.triggered.connect(self.import_stitchwork)
         self.ui.RefreshButton.clicked.connect(self.refresh_config)
 
@@ -144,6 +146,11 @@ class MyMainWindow:
         self.connection_sm.addState(discovered)
         self.connection_sm.addState(disconencted)
         self.connection_sm.setInitialState(disconencted)
+
+    def add_device(self, device: QBluetoothDeviceInfo):
+        if device.coreConfigurations() != QBluetoothDeviceInfo.CoreConfiguration.LowEnergyCoreConfiguration:
+            return
+        self.ui.MachineSelection.addItem(device.name,device)
 
     def refresh_config(self):
         pass
