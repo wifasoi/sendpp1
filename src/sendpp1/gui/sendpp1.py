@@ -1,3 +1,4 @@
+from ast import List
 import asyncio
 from ctypes.macholib import dyld
 from dataclasses import dataclass
@@ -12,12 +13,14 @@ from PySide6.QtCore import QFile, QIODevice
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtGui import QTransform
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtBluetooth import QBluetoothDeviceDiscoveryAgent, QBluetoothDeviceInfo
+from PySide6.QtBluetooth import QBluetoothDeviceDiscoveryAgent, QBluetoothDeviceInfo, QLowEnergyController, QBluetoothUuid, QLowEnergyService
 from PySide6.QtStateMachine import QStateMachine, QState
 import pyembroidery.SvgWriter
-from sendpp1.core.machine import EmbroideryBoundingBox, EmbroideryLayout
+from sendpp1.gui.machine import EmbroideryBoundingBox, EmbroideryLayout, MAIN_SERVICE_UUID, READ_CHAR_UUID, WRITE_CHAR_UUID
 import importlib.resources
 from loguru import logger
+from sendpp1.gui.pp1 import PP1ConenctionManager
+from bleak.backends.device import BLEDevice
 
 logger.add(sys.stdout, level="TRACE", colorize=True, backtrace=True, diagnose=True)
 
@@ -99,9 +102,7 @@ class MyMainWindow:
         self.connect_sockets()
         self.scene = QGraphicsScene()
         self.ui.StitchView.setScene(self.scene)
-        self. bt = QBluetoothDeviceDiscoveryAgent(self.ui)
-        self.bt.setLowEnergyDiscoveryTimeout(10000)
-        self.bt_devices = {}
+        self.conenction = PP1ConenctionManager()
         self.connection_sm = QStateMachine(self.ui)
         self.setup_conenction_statemachine()
         self.connection_sm.start()
@@ -111,7 +112,7 @@ class MyMainWindow:
         self.ui.show()
 
     def connect_sockets(self):
-        self.bt.deviceDiscovered.connect(self.add_device)
+
         self.ui.actionImport.triggered.connect(self.import_stitchwork)
         self.ui.RefreshButton.clicked.connect(self.refresh_config)
 
@@ -129,17 +130,21 @@ class MyMainWindow:
         searching.assignProperty(self.ui.bt_button, "text", self.ui.tr("Searching..."))
         searching.assignProperty(self.ui.bt_button, "enabled", False)
         searching.assignProperty(self.ui.MachineSelection, "enabled", False)
-        searching.entered.connect(self.bt.start)
-        searching.addTransition(self.bt.finished, discovered)
-        searching.addTransition(self.bt.errorOccurred, disconencted)
+        searching.entered.connect(self.ui.MachineSelection.clear)
+        searching.entered.connect(self.conenction.scan)
+        searching.addTransition(self.conenction.devices_discovered, discovered)
+        searching.addTransition(self.conenction.no_device_found, disconencted)
+        searching.addTransition(self.conenction.disconnected, disconencted)
 
         discovered.assignProperty(self.ui.bt_button, "enabled", True)
         discovered.assignProperty(self.ui.MachineSelection, "enabled", True)
         discovered.assignProperty(self.ui.bt_button, "text", self.ui.tr("Connect"))
+        searching.addTransition(self.conenction.disconnected, disconencted)
 
         conencted.assignProperty(self.ui.bt_button, "text", self.ui.tr("Connected"))
         conencted.assignProperty(self.ui.bt_button, "enabled", False)
         conencted.assignProperty(self.ui.MachineSelection, "enabled", False)
+        searching.addTransition(self.conenction.disconnected, disconencted)
 
         self.connection_sm.addState(conencted)
         self.connection_sm.addState(searching)
@@ -147,10 +152,12 @@ class MyMainWindow:
         self.connection_sm.addState(disconencted)
         self.connection_sm.setInitialState(disconencted)
 
-    def add_device(self, device: QBluetoothDeviceInfo):
-        if device.coreConfigurations() != QBluetoothDeviceInfo.CoreConfiguration.LowEnergyCoreConfiguration:
-            return
-        self.ui.MachineSelection.addItem(device.name,device)
+    def add_device(self, devices: List[BLEDevice]):
+        for device in devices:
+            self.ui.MachineSelection.addItem(device.address, device)
+
+    def connect_device(self):
+        self.conenction.connect(self.ui.MachineSelection.currentData)
 
     def refresh_config(self):
         pass

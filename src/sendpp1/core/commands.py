@@ -345,15 +345,16 @@ Y little endian Y coordinate, absolute
 f if feed=1, if cut = 2 , jump = feed+cut =
 '''
 class Section(Enum):
+    CMD = 0
     END = 5
     END_COLOR = 3
+
 
 class Operation(Enum):
     STITCH = 0
     FEED = 1
     CUT = 2
     JUMP = 3
-
 
 
 @dataclass
@@ -396,8 +397,5 @@ class Command:
         for point in list:
           data += point.to_byte()
         return data
-    
 
-import struct
-from dataclasses import dataclass
 
