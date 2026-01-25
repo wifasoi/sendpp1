@@ -5,4 +5,4 @@ reverse brother pp1
 *.egg-info
 __pycache__
 .vscode
-build
+build.idea/
