@@ -147,12 +147,36 @@ def get_pattern_uuid(device):
 @click.argument('uuid')
 def set_pattern_uuid(device, uuid):
     """Set pattern UUID."""
+
     async def _set_uuid(machine):
         uuid_obj = UUID(uuid)
-        response = await machine.machine_request(MachineCommand.SEND_UUID, uuid_obj.bytes_le)
-        if response and response[0] == 1:
+
+        # send as little-endian (protocol seems to want LE)
+        await machine.machine_request(MachineCommand.SEND_UUID, uuid_obj.bytes_le)
+
+        # read raw bytes back
+        raw = await machine.machine_request(MachineCommand.PATTERN_UUID, b"")
+        if not raw:
+            return "Failed to set UUID (empty readback)"
+
+        b = bytes(raw)
+
+        # Some implementations return only payload (16 bytes), others include a 2-byte header (0x07 0x02)
+        if len(b) == 16:
+            readback_uuid_bytes = b
+        elif len(b) >= 18:
+            readback_uuid_bytes = b[2:18]
+        else:
+            return f"Failed to set UUID (bad readback len={len(b)})"
+
+        if readback_uuid_bytes == uuid_obj.bytes_le:
             return "UUID set successfully"
-        return "Failed to set UUID"
+
+        # Helpful debug output
+        rb_le = UUID(bytes_le=readback_uuid_bytes)
+        rb_be = UUID(bytes=readback_uuid_bytes)
+        return f"Failed to set UUID (readback_le={rb_le}, readback_be={rb_be})"
+
     result = asyncio.run(connect_and_execute(device, _set_uuid))
     click.echo(result)
 
