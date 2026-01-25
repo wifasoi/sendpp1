@@ -318,7 +318,8 @@ def hoop_avoidance(device):
 @click.option('--frame', type=click.Choice([f.name for f in FrameType] + ["1", "2"]), 
              default="Frame100", show_default=True,
              help='Frame type (name or value)')
-def send_layout(device, move_x, move_y, size_x, size_y, rotate, flip, frame):
+@click.option('--mask', default=0, type=int, show_default=True, help="Layout mask/flags (short)")
+def send_layout(device, move_x, move_y, size_x, size_y, rotate, flip, frame, mask):
     """Send embroidery layout parameters to the machine."""
     async def _send_layout(machine):
         # Convert frame input to FrameType enum
@@ -342,7 +343,7 @@ def send_layout(device, move_x, move_y, size_x, size_y, rotate, flip, frame):
         )
         
         # Send to machine
-        await machine.send_layout(layout)
+        await machine.send_layout(layout,mask = mask)
         return layout
 
     async def _run():
