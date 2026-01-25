@@ -201,35 +201,72 @@ def transfer_data(device, data_file):
     click.echo(result)
 
 # Add more commands for other methods following the same pattern
-
 @cli.command()
-@click.option('--suffix', default="1a:4b:e8", help='MAC address suffix to match (last 3 octets)')
-def scan_device(suffix):
-    """Scan for BLE devices matching MAC address suffix."""
+@click.option('--suffix', default=None, help="MAC address suffix to match (last 3 octets), format 'XX:XX:XX'")
+@click.option('--name', 'name_filter', default=None, help="Filter by device name substring (e.g., 'Brother PP1')")
+@click.option('--all', 'list_all', is_flag=True, help="List all BLE devices (no filtering)")
+@click.option('--timeout', default=8.0, show_default=True, type=float, help="Scan timeout in seconds")
+def scan_device(suffix, name_filter, list_all, timeout):
+    """Scan for BLE devices. Supports suffix, name filter, or listing all."""
     async def _scan():
-        # Normalize input suffix
-        suffix_clean = suffix.strip().lower().replace('-', ':')
-        if len(suffix_clean.split(':')) != 3:
-            raise click.BadParameter("Suffix must be in format 'XX:XX:XX'")
+        # Decide mode
+        suffix_clean = None
+        if suffix:
+            suffix_clean = suffix.strip().lower().replace('-', ':')
+            if len(suffix_clean.split(':')) != 3:
+                raise click.BadParameter("Suffix must be in format 'XX:XX:XX'")
 
-        click.echo(f"🔍 Scanning for BLE devices (matching suffix {suffix_clean})...")
-        devices = await BleakScanner.discover()
-        
+        if sum(bool(x) for x in [suffix_clean, name_filter, list_all]) > 1:
+            raise click.BadParameter("Use only one of --suffix, --name, or --all")
+
+        # Default behavior: if no filter provided, try to find PP1-like names
+        default_pp1_mode = not suffix_clean and not name_filter and not list_all
+        effective_name_filter = "Brother PP1" if default_pp1_mode else name_filter
+
+        if list_all:
+            click.echo(f"🔍 Scanning for BLE devices (timeout {timeout}s)...")
+        elif suffix_clean:
+            click.echo(f"🔍 Scanning for BLE devices (matching suffix {suffix_clean}, timeout {timeout}s)...")
+        else:
+            click.echo(f"🔍 Scanning for BLE devices (name contains '{name_filter}', timeout {timeout}s)...")
+
+        devices = await BleakScanner.discover(timeout=timeout)
+
         found_devices = []
         for d in devices:
-            # Get last 3 octets of device MAC
-            device_octets = d.address.lower().replace('-', ':').split(':')
-            device_suffix = ':'.join(device_octets[-3:])
-            
-            if device_suffix == suffix_clean:
+            addr = (getattr(d, "address", "") or "").lower().replace('-', ':')
+            name = (getattr(d, "name", "") or "").strip()
+
+            ok = False
+            if list_all:
+                ok = True
+            elif suffix_clean:
+                octets = addr.split(':')
+                # On macOS, addr might be a UUID; guard against that
+                if len(octets) >= 3:
+                    device_suffix = ':'.join(octets[-3:])
+                    ok = (device_suffix == suffix_clean)
+            else:
+                ok = (name_filter.lower() in name.lower()) if name_filter else bool(name)
+
+            if ok:
                 found_devices.append(d)
 
         if found_devices:
-            click.secho(f"✅ Found {len(found_devices)} device(s) matching suffix {suffix_clean}", fg='green')
+            click.secho(f"✅ Found {len(found_devices)} device(s)", fg='green')
             for d in found_devices:
                 click.echo(f"  - {d.address} ({d.name or 'No name'})")
+            if default_pp1_mode:
+                click.echo("\nTip: copy the address above and use it as --device for other commands.")
         else:
-            click.secho(f"❌ No devices found matching suffix {suffix_clean}", fg='red')
+            if default_pp1_mode:
+                click.secho("❌ No 'Brother PP1' devices found. Try --all to list everything.", fg='red')
+            elif suffix_clean:
+                click.secho(f"❌ No devices found matching suffix {suffix_clean}", fg='red')
+            elif name_filter:
+                click.secho(f"❌ No devices found with name containing '{name_filter}'", fg='red')
+            else:
+                click.secho("❌ No devices found.", fg='red')
 
     asyncio.run(_scan())
 
