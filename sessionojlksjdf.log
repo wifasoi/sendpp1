@@ -1,0 +1,61 @@
+2026-04-01 22:40:56.478 | INFO     | __main__:main:605 | Logging to sessionojlksjdf.log
+2026-04-01 22:41:08.892 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_INFO(0) to bytearray 0x0000
+2026-04-01 22:41:08.892 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x0000 (2 bytes)
+2026-04-01 22:41:08.942 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 0000(0x)
+2026-04-01 22:41:09.016 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x00\x00\x00hG4P658887a\x01\xbc*p\x94\xdd\xf8\x1aK\xe8\x00d\x00e\x02\x01\x01\xe8\x03\xe8\x03\x01\x00\x00\x00\x00\x00888R0050201')
+2026-04-01 22:41:09.016 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_INFO(0) to bytearray 0x0000
+2026-04-01 22:41:09.016 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.MACHINE_INFO(0x) -> 0x000000684734503635383838376101bc2a7094ddf81a4be800640065020101e803e8030100000000003838385230303530323031
+2026-04-01 22:41:09.020 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:09.020 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x0001 (2 bytes)
+2026-04-01 22:41:09.044 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 0001(0x)
+2026-04-01 22:41:09.074 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x00\x01\x10\x02')
+2026-04-01 22:41:09.075 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:09.075 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.MACHINE_STATE(0x) -> 0x00011002
+2026-04-01 22:41:10.079 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.DELETE_EMBROIDERY(1800) to bytearray 0x0708
+2026-04-01 22:41:10.079 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x0708 (2 bytes)
+2026-04-01 22:41:10.110 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 0708(0x)
+2026-04-01 22:41:11.324 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x07\x08\x00')
+2026-04-01 22:41:11.324 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.DELETE_EMBROIDERY(1800) to bytearray 0x0708
+2026-04-01 22:41:11.324 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.DELETE_EMBROIDERY(0x) -> 0x070800
+2026-04-01 22:41:11.324 | SUCCESS  | sendpp1.core.machine:delete_emboridery:746 | Embroidery deletition completed successfully
+2026-04-01 22:41:11.327 | DEBUG    | sendpp1.core.machine:max_size_packet:609 | Data chunk size=20
+2026-04-01 22:41:11.327 | INFO     | sendpp1.core.machine:transfer:798 | Starting transfer: 1584 bytes, checksum=0x757E, chunk_size=20, chunks=80
+2026-04-01 22:41:11.327 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.PREPARE_TRANSFER(4608) to bytearray 0x1200
+2026-04-01 22:41:11.327 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x120003300600007e75 (9 bytes)
+2026-04-01 22:41:11.354 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 1200(0x03300600007e75)
+2026-04-01 22:41:12.568 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x12\x00\x00')
+2026-04-01 22:41:12.568 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.PREPARE_TRANSFER(4608) to bytearray 0x1200
+2026-04-01 22:41:12.568 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.PREPARE_TRANSFER(0x03300600007e75) -> 0x120000
+2026-04-01 22:41:12.568 | SUCCESS  | sendpp1.core.machine:prepare_transfer:790 | Prepare transfer OK — machine expects 1584 bytes, checksum 0x757E
+2026-04-01 22:41:12.670 | DEBUG    | sendpp1.core.machine:transfer:822 | First data packet hex (25 bytes): 00000000e007330500007304000070041800400430000804a2
+2026-04-01 22:41:12.670 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.DATA_PACKET(4609) to bytearray 0x1201
+2026-04-01 22:41:12.670 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x120100000000e007330500007304000070041800400430000804a2 (27 bytes)
+2026-04-01 22:41:12.704 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 1201(0x00000000e007330500007304000070041800400430000804a2)
+2026-04-01 22:41:12.736 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x12\x01\x02\x14\x00\x00\x00')
+2026-04-01 22:41:12.736 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.DATA_PACKET(4609) to bytearray 0x1201
+2026-04-01 22:41:12.736 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.DATA_PACKET(0x00000000e007330500007304000070041800400430000804a2) -> 0x12010214000000
+2026-04-01 22:41:12.737 | ERROR    | sendpp1.core.machine:transfer:829 | Data packet 1/80 REJECTED status=2 extra=20 (offset=0, chunk_len=20, csum=0xA2)
+2026-04-01 22:41:12.741 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:12.741 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x0001 (2 bytes)
+2026-04-01 22:41:12.764 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 0001(0x)
+2026-04-01 22:41:12.794 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x00\x01\x10\x02')
+2026-04-01 22:41:12.795 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:12.795 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.MACHINE_STATE(0x) -> 0x00011002
+2026-04-01 22:41:13.796 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:13.796 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x0001 (2 bytes)
+2026-04-01 22:41:13.828 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 0001(0x)
+2026-04-01 22:41:13.873 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x00\x01\x10\x02')
+2026-04-01 22:41:13.873 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:13.873 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.MACHINE_STATE(0x) -> 0x00011002
+2026-04-01 22:41:14.875 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:14.875 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x0001 (2 bytes)
+2026-04-01 22:41:14.908 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 0001(0x)
+2026-04-01 22:41:14.942 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x00\x01\x10\x02')
+2026-04-01 22:41:14.942 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:14.942 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.MACHINE_STATE(0x) -> 0x00011002
+2026-04-01 22:41:15.943 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:15.943 | TRACE    | sendpp1.core.machine:build_cmd:617 | build_cmd: 0x0001 (2 bytes)
+2026-04-01 22:41:15.973 | TRACE    | sendpp1.core.machine:send:622 | BTSend: 0001(0x)
+2026-04-01 22:41:16.018 | TRACE    | sendpp1.core.machine:receive:626 | BTReceive: 0xbytearray(b'\x00\x01\x10\x02')
+2026-04-01 22:41:16.018 | TRACE    | sendpp1.core.machine:to_bytes:262 | Converted: MachineCommand.MACHINE_STATE(1) to bytearray 0x0001
+2026-04-01 22:41:16.018 | SUCCESS  | sendpp1.core.machine:machine_request:649 | MachineCommand.MACHINE_STATE(0x) -> 0x00011002
