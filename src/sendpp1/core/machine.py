@@ -597,10 +597,25 @@ class EmbroideryMachine:
 
     @property
     def max_size_packet(self) -> int:
-        return 500
-    # @property
-    # async def max_size_packet(self):
-    #     return await self.client.services.get_characteristic(WRITE_CHAR_UUID).max_write_without_response_size
+        """Max stitch-data bytes per DATA_PACKET chunk.
+
+        Each DATA_PACKET BLE write is:
+            cmd(2) + offset(4) + chunk(N) + checksum(2)  =  N + 8
+
+        The BLE Write Request payload limit is MTU − 3, so the max chunk
+        is  (MTU − 3) − 8  =  MTU − 11.
+
+        bleak exposes the negotiated ATT MTU via client.mtu_size.
+        """
+        mtu = getattr(self.client, 'mtu_size', 23)  # fall back to BLE default
+        overhead = 2 + 4 + 2  # cmd + offset + checksum
+        max_chunk = (mtu - 3) - overhead  # ATT payload limit minus protocol overhead
+        # Align down to a multiple of 4 (each stitch = 4 bytes) for clean framing
+        max_chunk = (max_chunk // 4) * 4
+        if max_chunk < 4:
+            max_chunk = 4  # absolute minimum: one stitch command
+        logger.debug("BLE MTU={}, max write={}, data chunk size={}", mtu, mtu - 3, max_chunk)
+        return max_chunk
 
     @staticmethod
     def build_cmd(cmd: bytearray , data: bytearray) -> bytearray:
@@ -623,9 +638,10 @@ class EmbroideryMachine:
         await self.send(cmd,data)
         return await self.receive()
 
-    async def command(self, cmd: bytearray, data: bytearray = b'') -> None:
-        await self.send(cmd, data, response=False)
-        logger.debug("BT command: 0x{} (data=0x{}))", cmd.hex(), data.hex() )
+    async def command(self, cmd: MachineCommand | bytearray, data: bytearray = b'') -> None:
+        cmd_bytes = cmd.to_bytes() if isinstance(cmd, MachineCommand) else cmd
+        await self.send(cmd_bytes, data, response=False)
+        logger.debug("BT command: 0x{} (data=0x{}))", cmd_bytes.hex(), data.hex() )
 
     async def machine_request(self, cmd: MachineCommand, data: bytearray = b'') -> bytearray:
         response = await self.request(cmd.to_bytes(), data)
@@ -670,6 +686,7 @@ class EmbroideryMachine:
         data = await self.machine_request(MachineCommand.SEND_UUID, uuid.bytes_le)
         if len(data) > 0 and data[0] == 1:
             logger.success("the UUID: {} was written successfully", uuid)
+            return
         logger.error("the UUID: {} failed", uuid)
 
     @property
@@ -766,21 +783,50 @@ class EmbroideryMachine:
         logger.success("Sent Hoop avoidence command")
 
     async def prepare_transfer(self, size: int, checksum: int) -> None:
-        data = await self.machine_request(MachineCommand.PREPARE_TRANSFER, b'\03' + size.to_bytes(length=2,byteorder='little') + checksum.to_bytes(length=2,byteorder='little'))
+        # Pcap-verified format (9 bytes total = cmd(2) + 7-byte payload):
+        #   type(1) = 0x03 | size(4, uint32 LE) | checksum(2, uint16 LE)
+        # NO trailing padding — pcap shows exactly 7 payload bytes.
+        payload = (
+            b'\x03'
+            + size.to_bytes(length=4, byteorder='little')
+            + checksum.to_bytes(length=2, byteorder='little')
+        )
+        data = await self.machine_request(MachineCommand.PREPARE_TRANSFER, payload)
         if data and data[0] != 0:
-            logger.error("Preliminary data sending failed")
+            logger.error("Preliminary data sending failed with status: {}", data[0])
             return
-        logger.success("Sent preliminary data. the machine is expecting {} bytes with checksum 0x{}",size, hex(checksum))
+        logger.success("Sent preliminary data. the machine is expecting {} bytes with checksum 0x{:04X}", size, checksum)
 
-    async def transfer(self, data: bytearray) -> None:
+    async def transfer(self, data: bytearray) -> bool:
+        """Transfer stitch data to the machine. Returns True on success."""
         transfer_size = self.max_size_packet
-        checksum = sum(data)
-        await self.prepare_transfer(len(data),checksum)
-        for index, chunk in enumerate(batched(data,n=transfer_size,strict=False)):
-            chunk_checksum = sum(chunk)
-            offset = index * len(chunk)
-            await self.command(MachineCommand.DATA_PACKET, offset.to_bytes(4,'little') + chunk + chunk_checksum.to_bytes(1,'little'))
-        #TODO: Error handling
-        while((result := await self.receive()) > 3 and result[2] != 0):
-            if result[2] == 2:
-                await asyncio.sleep(1)
+        checksum = sum(data) & 0xFFFF
+        logger.info(
+            "Starting transfer: {} bytes, checksum=0x{:04X}, chunk_size={}",
+            len(data), checksum, transfer_size,
+        )
+        await self.prepare_transfer(len(data), checksum)
+        total_chunks = (len(data) + transfer_size - 1) // transfer_size
+        bytes_sent = 0
+        for index, chunk in enumerate(batched(data, n=transfer_size, strict=False)):
+            chunk_bytes = bytes(chunk)
+            chunk_checksum = sum(chunk_bytes) & 0xFF
+            # Pcap-verified format: offset(4,LE) + chunk + checksum(1,uint8)
+            # Note: prepare_transfer uses uint16 for total checksum, but data packets use uint8.
+            # Must use machine_request (ATT Write Request + Read) — NOT command (Write Command).
+            payload = (
+                bytes_sent.to_bytes(4, 'little')
+                + chunk_bytes
+                + chunk_checksum.to_bytes(1, 'little')
+            )
+            resp = await self.machine_request(MachineCommand.DATA_PACKET, payload)
+            if resp and resp[0] != 0:
+                logger.error(
+                    "Data packet {}/{} REJECTED status={} (offset={}, chunk_len={}, csum=0x{:02X})",
+                    index + 1, total_chunks, resp[0], bytes_sent, len(chunk_bytes), chunk_checksum,
+                )
+                return False
+            bytes_sent += len(chunk_bytes)
+            logger.debug("Data packet {}/{} OK (offset={}, sent={})", index + 1, total_chunks, bytes_sent - len(chunk_bytes), bytes_sent)
+        logger.success("Transfer complete — {} chunks, {} bytes", total_chunks, bytes_sent)
+        return True
