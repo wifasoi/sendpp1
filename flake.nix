@@ -9,7 +9,6 @@
       let
         pkgs = import nixpkgs { inherit system; };
         python = pkgs.python312;
-
         # ── async-property (not in nixpkgs) ─────────────────────────────
         async-property = python.pkgs.buildPythonPackage rec {
           pname = "async_property";
@@ -21,7 +20,6 @@
           };
           doCheck = false;
         };
-
         # ── Python deps for the TUI (no Qt needed) ──────────────────────
         pythonPkgs = python.withPackages (ps: with ps; [
           bleak
@@ -31,7 +29,6 @@
           textual
           async-property
         ]);
-
         # ── sendpp1-tui package ─────────────────────────────────────────
         sendpp1-tui = python.pkgs.buildPythonApplication {
           pname = "sendpp1-tui";
@@ -57,7 +54,6 @@
             mainProgram = "sendpp1-tui";
           };
         };
-
         # ── Wireshark dissector plugin ──────────────────────────────────
         sendpp1-wireshark = pkgs.stdenv.mkDerivation {
           pname = "sendpp1-wireshark";
@@ -100,6 +96,13 @@
             echo "  Wireshark:        tshark (with PP1 dissector)"
             echo ""
             export WIRESHARK_PLUGIN_DIR="$(pwd)/wireshark"
+            export UV_NO_MANAGED_PYTHON=1
+
+            if [ ! -d .venv ]; then
+              uv venv --python ${python}/bin/python .venv
+            fi
+            source .venv/bin/activate
+            uv pip install -e .
           '';
         };
       }
