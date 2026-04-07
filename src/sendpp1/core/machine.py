@@ -583,7 +583,10 @@ class EmbroideryMonitorInfo:
             current_stitch_y=unpacked[4],
         )
 
+from typing import Union
 
+
+CmdT = Union["MachineCommand", bytes, bytearray]
 class EmbroideryMachine:
     def __init__(self, client):
         self.client = client
@@ -602,30 +605,46 @@ class EmbroideryMachine:
     # async def max_size_packet(self):
     #     return await self.client.services.get_characteristic(WRITE_CHAR_UUID).max_write_without_response_size
 
-    @staticmethod
-    def build_cmd(cmd: bytearray , data: bytearray) -> bytearray:
-        buffer = cmd
-        if data:
-            buffer += data
-        logger.trace("From: {} and {} -> 0x{}", cmd, data, buffer.hex())
-        return buffer
 
-    async def send(self, cmd: bytearray, data: bytearray = b'', response=True) -> None:
-        await self.client.write_gatt_char(WRITE_CHAR_UUID, self.build_cmd(cmd,data), response=response)
-        logger.trace("BTSend: {}(0x{})", cmd.hex(), data.hex())
+    @staticmethod
+    def _cmd_bytes(cmd: CmdT) -> bytearray:
+        if isinstance(cmd, MachineCommand):
+            return bytearray(cmd.value.to_bytes(2, byteorder="big"))
+        return bytearray(cmd)
+
+    @staticmethod
+    def build_cmd(cmd: CmdT, data: bytes = b"") -> bytearray:
+        buf = EmbroideryMachine._cmd_bytes(cmd)
+        if data:
+            buf.extend(data)
+        logger.trace("From: {} and {} -> 0x{}", buf[:2].hex(), data.hex(), buf.hex())
+        return buf
+
+    async def send(self, cmd: CmdT, data: bytes = b"", response: bool = True) -> None:
+        payload = self.build_cmd(cmd, data)
+        await self.client.write_gatt_char(WRITE_CHAR_UUID, payload, response=response)
+        logger.trace("BTSend: {}(0x{})", self._cmd_bytes(cmd).hex(), data.hex())
+
+    async def request(self, cmd: CmdT, data: bytes = b"") -> bytearray:
+        await self.send(cmd, data, response=True)
+        return await self.receive()
+
+    async def command(self, cmd: CmdT, data: bytes = b"") -> None:
+        await self.send(cmd, data, response=False)
+        logger.debug("BT command: 0x{} (data=0x{})", self._cmd_bytes(cmd).hex(), data.hex())
+
+
+
+
 
     async def receive(self) -> bytearray:
         value = await self.client.read_gatt_char(READ_CHAR_UUID)
         logger.trace("BTReceive: 0x{}",value)
         return value
 
-    async def request(self, cmd: bytearray, data: bytearray = b'') -> bytearray:
-        await self.send(cmd,data)
-        return await self.receive()
 
-    async def command(self, cmd: bytearray, data: bytearray = b'') -> None:
-        await self.send(cmd, data, response=False)
-        logger.debug("BT command: 0x{} (data=0x{}))", cmd.hex(), data.hex() )
+
+
 
     async def machine_request(self, cmd: MachineCommand, data: bytearray = b'') -> bytearray:
         response = await self.request(cmd.to_bytes(), data)
@@ -765,22 +784,42 @@ class EmbroideryMachine:
         await self.machine_request(MachineCommand.HOOP_AVOIDANCE)
         logger.success("Sent Hoop avoidence command")
 
-    async def prepare_transfer(self, size: int, checksum: int) -> None:
-        data = await self.machine_request(MachineCommand.PREPARE_TRANSFER, b'\03' + size.to_bytes(length=2,byteorder='little') + checksum.to_bytes(length=2,byteorder='little'))
-        if data and data[0] != 0:
-            logger.error("Preliminary data sending failed")
-            return
-        logger.success("Sent preliminary data. the machine is expecting {} bytes with checksum 0x{}",size, hex(checksum))
+    async def prepare_transfer(self, size: int, checksum: int) -> bool:
+        checksum &= 0xFFFF
+        payload = b'\x03' + size.to_bytes(4, 'little') + checksum.to_bytes(2, 'little')
 
+        data = await self.machine_request(MachineCommand.PREPARE_TRANSFER, payload)
+        if not data:
+            return False
+
+        if data[0] != 0:
+            logger.error("Preliminary data sending failed (status={})", data[0])
+            return False
+
+        logger.success("Sent preliminary data. expecting {} bytes checksum {}", size, hex(checksum))
+        return True
     async def transfer(self, data: bytearray) -> None:
         transfer_size = self.max_size_packet
-        checksum = sum(data)
-        await self.prepare_transfer(len(data),checksum)
-        for index, chunk in enumerate(batched(data,n=transfer_size,strict=False)):
-            chunk_checksum = sum(chunk)
-            offset = index * len(chunk)
-            await self.command(MachineCommand.DATA_PACKET, offset.to_bytes(4,'little') + chunk + chunk_checksum.to_bytes(1,'little'))
-        #TODO: Error handling
-        while((result := await self.receive()) > 3 and result[2] != 0):
+        checksum = sum(data) & 0xFFFF
+        await self.prepare_transfer(len(data), checksum)
+
+        for offset in range(0, len(data), transfer_size):
+            chunk = data[offset: offset + transfer_size]
+            chunk_checksum = sum(chunk) & 0xFF
+            await self.command(
+                MachineCommand.DATA_PACKET,
+                offset.to_bytes(4, 'little') + bytes(chunk) + chunk_checksum.to_bytes(1, 'little')
+            )
+
+        # TODO: Error handling
+        while True:
+            result = await self.receive()
+            if not result or len(result) < 3:
+                break
+            if result[2] == 0:
+                break
             if result[2] == 2:
                 await asyncio.sleep(1)
+                continue
+            logger.error("Transfer result status={}, raw=0x{}", result[2], result.hex())
+            break
