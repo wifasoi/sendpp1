@@ -177,21 +177,25 @@ function decodePECStitches(data, startOffset) {
       y = signed7(val2);
     }
 
-    absX += x;
-    absY += y;
-
-    // Match pyembroidery behavior:
+    // Match pyembroidery behavior exactly:
+    // - trim(): records at current pos, no delta applied
+    // - move(x, y): applies delta, records at new pos
+    // - stitch(x, y): applies delta, records at new pos
     if (trim) {
-      // out.trim() → adds TRIM at current position
+      // out.trim() — cut thread at CURRENT position (before moving)
       stitches.push({ x: absX, y: absY, cmd: CMD_TRIM });
-      // out.move(x, y) → adds MOVE (jump) at new position
-      stitches.push({ x: absX, y: absY, cmd: CMD_MOVE });
-    } else if (jump) {
-      // out.move(x, y)
+      // out.move(x, y) — then jump to the new position
+      absX += x;
+      absY += y;
       stitches.push({ x: absX, y: absY, cmd: CMD_MOVE });
     } else {
-      // out.stitch(x, y)
-      stitches.push({ x: absX, y: absY, cmd: CMD_STITCH });
+      absX += x;
+      absY += y;
+      if (jump) {
+        stitches.push({ x: absX, y: absY, cmd: CMD_MOVE });
+      } else {
+        stitches.push({ x: absX, y: absY, cmd: CMD_STITCH });
+      }
     }
   }
 
