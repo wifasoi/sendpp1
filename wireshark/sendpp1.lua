@@ -104,7 +104,7 @@ f.set_speed   = ProtoField.int16 ("sendpp1.set_speed",    "Sewing Speed")
 
 -- Prepare Transfer (cmd 4608)
 f.xfer_type   = ProtoField.uint8 ("sendpp1.xfer_type",    "Transfer Type")
-f.xfer_size   = ProtoField.uint16("sendpp1.xfer_size",    "Data Size (bytes)")
+f.xfer_size   = ProtoField.uint32("sendpp1.xfer_size",    "Data Size (bytes)")
 f.xfer_csum   = ProtoField.uint16("sendpp1.xfer_csum",    "Checksum")
 
 -- Data Packet (cmd 4609)
@@ -267,10 +267,10 @@ local function dissect_machine_setting(buf, tree)
 end
 
 local function dissect_prepare_transfer(buf, tree)
-    if buf:len() < 5 then return end
+    if buf:len() < 7 then return end
     tree:add_le(f.xfer_type, buf(0,1))
-    tree:add_le(f.xfer_size, buf(1,2))
-    tree:add_le(f.xfer_csum, buf(3,2))
+    tree:add_le(f.xfer_size, buf(1,4))
+    tree:add_le(f.xfer_csum, buf(5,2))
 end
 
 local SECTION_NAMES   = { [0]="CMD", [3]="END_COLOR", [5]="END" }

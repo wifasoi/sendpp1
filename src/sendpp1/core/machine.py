@@ -148,7 +148,7 @@ from enum import Enum
 import asyncio
 from os import wait
 import sys
-from itertools import count, takewhile, batched
+from itertools import batched, count, takewhile
 from typing import Iterator
 from time import sleep
 from dataclasses import dataclass
@@ -159,6 +159,7 @@ from uuid import UUID
 
 
 
+from async_property import async_property
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.backends.device import BLEDevice
@@ -595,19 +596,39 @@ class EmbroideryMachine:
     async def __aexit__(self, type, value, traceback):
         await self.client.disconnect()
 
-    # The machine's firmware has a fixed receive buffer independent of the BLE
-    # MTU.  Each data packet on the wire is:
-    #   cmd(2) + offset(4) + stitch_data(N) + checksum(1) = N + 7 bytes.
-    # Empirically, the only successful transfer used N=20 (27 bytes total).
-    # Both N=24 (31 bytes) and N=504 were rejected with status=2.
-    # 20 bytes = 5 stitch commands (each 4 bytes), nicely 4-byte aligned.
-    MAX_CHUNK_DATA = 20
+    # DATA_PACKET transfer protocol:
+    #   The machine supports chunked transfers.  Each DATA_PACKET response
+    #   contains a status byte:
+    #     status=0 → transfer complete (all announced bytes received)
+    #     status=2 → chunk ACK (bytes received, send more)
+    #   The 4 bytes after status report the chunk size received.
+    #
+    #   Chunk size is limited by the BLE ATT MTU (macOS Core Bluetooth
+    #   does not support Long Write, so we cannot exceed MTU-3 per write).
+    #
+    # Wire format of a DATA_PACKET:
+    #   cmd(2) + offset(4) + stitch_data(N) + checksum(1) = N + 7 bytes
+    PACKET_OVERHEAD = 7  # cmd(2) + offset(4) + checksum(1)
+    DATA_STATUS_COMPLETE = 0
+    DATA_STATUS_CONTINUE = 2
 
-    @property
-    def max_size_packet(self) -> int:
-        """Max stitch-data bytes per DATA_PACKET chunk."""
-        logger.debug("Data chunk size={}", self.MAX_CHUNK_DATA)
-        return self.MAX_CHUNK_DATA
+    @async_property
+    async def max_size_packet(self) -> int:
+        """Max stitch-data bytes per DATA_PACKET chunk.
+
+        Queries the BLE characteristic's max_write_without_response_size and
+        subtracts the packet overhead so each chunk fits in a single BLE write.
+        """
+        try:
+            char = self.client.services.get_characteristic(WRITE_CHAR_UUID)
+            if char is not None:
+                raw = char.max_write_without_response_size
+                usable = raw - self.PACKET_OVERHEAD
+                logger.debug("BLE max_write_without_response_size={}, usable data chunk={}", raw, usable)
+                return usable
+        except Exception as e:
+            logger.warning("Could not query BLE characteristic size: {}", e)
+        return 512 - self.PACKET_OVERHEAD  # conservative default
 
     @staticmethod
     def build_cmd(cmd: bytearray, data: bytearray) -> bytearray:
@@ -724,7 +745,7 @@ class EmbroideryMachine:
         await self.machine_request(MachineCommand.SEND_HOST_SETTINGS, settings.to_bytes())
         logger.success("Apply new settings: {}", settings)
 
-    async def set_stitch_index(self, index: int) -> int:
+    async def set_stitch_index(self, index: int) -> None:
         await self.machine_request(MachineCommand.SET_NEEDLE_MODE, bytes(index))
         logger.success("Set stitch index to {}",index)
 
@@ -791,8 +812,14 @@ class EmbroideryMachine:
         return True
 
     async def transfer(self, data: bytearray) -> bool:
-        """Transfer stitch data to the machine. Returns True on success."""
-        transfer_size = self.max_size_packet
+        """Transfer stitch data to the machine. Returns True on success.
+
+        Data is sent in chunks sized to fit within a single BLE write
+        (limited by ATT MTU).  Each DATA_PACKET response carries a status:
+          0 = transfer complete (all announced bytes received)
+          2 = chunk acknowledged, send next chunk
+        """
+        transfer_size = await self.max_size_packet
         checksum = sum(data) & 0xFFFF
         total_chunks = (len(data) + transfer_size - 1) // transfer_size
         logger.info(
@@ -811,30 +838,43 @@ class EmbroideryMachine:
             chunk_bytes = bytes(chunk)
             chunk_checksum = sum(chunk_bytes) & 0xFF
             # Format: offset(4,LE) + chunk + checksum(1,uint8)
-            # Note: prepare_transfer uses uint16 for total checksum, data packets use uint8.
             payload = (
                 bytes_sent.to_bytes(4, 'little')
                 + chunk_bytes
                 + chunk_checksum.to_bytes(1, 'little')
             )
-            # Log the first packet's hex for debugging
             if index == 0:
                 logger.debug(
                     "First data packet hex ({} bytes): {}",
                     len(payload), payload.hex(),
                 )
+
             resp = await self.machine_request(MachineCommand.DATA_PACKET, payload)
-            if resp and resp[0] != 0:
-                extra = int.from_bytes(resp[1:5], 'little') if len(resp) >= 5 else -1
+            if not resp:
+                logger.error("DATA_PACKET {}/{} — no response", index + 1, total_chunks)
+                return False
+
+            status = resp[0]
+            extra = int.from_bytes(resp[1:5], 'little') if len(resp) >= 5 else -1
+
+            if status == self.DATA_STATUS_COMPLETE:
+                bytes_sent += len(chunk_bytes)
+                logger.success("Transfer complete — {} bytes, {} chunks", bytes_sent, index + 1)
+                return True
+            elif status == self.DATA_STATUS_CONTINUE:
+                bytes_sent += len(chunk_bytes)
+                if (index + 1) % 10 == 0:
+                    logger.info("Transfer progress: {}/{} chunks ({}/{})", index + 1, total_chunks, bytes_sent, len(data))
+                else:
+                    logger.debug("Data packet {}/{} ACK (offset={}, sent={})", index + 1, total_chunks, bytes_sent - len(chunk_bytes), bytes_sent)
+            else:
                 logger.error(
                     "Data packet {}/{} REJECTED status={} extra={} (offset={}, chunk_len={}, csum=0x{:02X})",
-                    index + 1, total_chunks, resp[0], extra, bytes_sent, len(chunk_bytes), chunk_checksum,
+                    index + 1, total_chunks, status, extra, bytes_sent, len(chunk_bytes), chunk_checksum,
                 )
                 return False
-            bytes_sent += len(chunk_bytes)
-            if (index + 1) % 10 == 0 or index == total_chunks - 1:
-                logger.info("Transfer progress: {}/{} chunks ({}/{})", index + 1, total_chunks, bytes_sent, len(data))
-            else:
-                logger.debug("Data packet {}/{} OK (offset={}, sent={})", index + 1, total_chunks, bytes_sent - len(chunk_bytes), bytes_sent)
-        logger.success("Transfer complete — {} chunks, {} bytes", total_chunks, bytes_sent)
+
+        # All chunks sent, last response was status=2 (continue) not 0 (complete)
+        # This shouldn't happen if the machine is tracking bytes correctly
+        logger.warning("All {} chunks sent ({} bytes) but final status was not 0", total_chunks, bytes_sent)
         return True
