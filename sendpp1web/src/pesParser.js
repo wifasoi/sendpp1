@@ -226,19 +226,36 @@ export function encodePP1(stitches) {
   const dv = new DataView(buf);
   let off = 0;
 
+  // Track whether the next MOVE should be a JUMP (feed+cut) or FEED (move only).
+  // When a TRIM is dropped (because it precedes a MOVE), its "cut" semantics
+  // are absorbed into the following MOVE → JUMP(3).  Otherwise MOVE → FEED(1).
+  let nextMoveIsJump = false;
+  let lastCmd = -1;
+  let lastX = NaN, lastY = NaN;
+  let lastStitchFlag = -1;
+
   for (let idx = 0; idx < stitches.length; idx++) {
     const { x, y, cmd } = stitches[idx];
+
+    // Drop zero-delta STITCHes that follow a JUMP (feed+cut) — these are
+    // PEC anchor bytes (0x00 0x00) inserted after TRIM+JUMP sequences.
+    // They're not real design stitches. We only drop them after JUMP (sf=3),
+    // NOT after FEED (sf=1), because a stitch at the FEED destination is
+    // the real first stitch of the pattern/color.
+    if (cmd === CMD_STITCH && lastCmd === CMD_MOVE && lastStitchFlag === 3
+        && x === lastX && y === lastY) {
+      continue;
+    }
     let blockFlag = 0;   // section flag (x low 3 bits)
     let stitchFlag = 0;  // operation flag (y low 3 bits)
 
-    // PP1 quirk: drop TRIM when the next command is a JUMP/MOVE.
-    // A trim before a jump is redundant — the machine lifts the needle
-    // for jumps anyway. The Python PP1 writer silently drops these,
-    // and keeping them causes phantom thread cuts.
+    // Drop TRIM when followed by MOVE or COLOR_CHANGE — the cut semantics
+    // get absorbed into the next MOVE (which becomes JUMP = feed+cut).
     if (cmd === CMD_TRIM) {
       const next = stitches[idx + 1];
       if (next && (next.cmd === CMD_MOVE || next.cmd === CMD_COLOR_CHANGE)) {
-        continue;  // skip this TRIM
+        nextMoveIsJump = true;   // next MOVE absorbs the cut
+        continue;
       }
     }
 
@@ -246,8 +263,12 @@ export function encodePP1(stitches) {
       case CMD_STITCH:
         blockFlag = 0; stitchFlag = 0;
         break;
-      case CMD_MOVE:  // JUMP
-        blockFlag = 0; stitchFlag = 3;
+      case CMD_MOVE:
+        // JUMP(3) = feed+cut — only when absorbing a dropped TRIM.
+        // FEED(1) = move only — for initial positioning & after color change.
+        blockFlag = 0;
+        stitchFlag = nextMoveIsJump ? 3 : 1;
+        nextMoveIsJump = false;
         break;
       case CMD_TRIM:
         blockFlag = 0; stitchFlag = 2;
@@ -255,6 +276,7 @@ export function encodePP1(stitches) {
       case CMD_COLOR_CHANGE:
       case CMD_STOP:
         blockFlag = 3; stitchFlag = 0;
+        nextMoveIsJump = false;  // color change handles the cut
         break;
       case CMD_END:
         blockFlag = 5; stitchFlag = 0;
@@ -269,6 +291,11 @@ export function encodePP1(stitches) {
     dv.setInt16(off, xRaw, true);
     dv.setInt16(off + 2, yRaw, true);
     off += 4;
+
+    lastCmd = cmd;
+    lastX = x;
+    lastY = y;
+    lastStitchFlag = stitchFlag;
   }
 
   return new Uint8Array(buf, 0, off);
