@@ -131,6 +131,7 @@ function decodePECStitches(data, startOffset) {
   let absX = 0;
   let absY = 0;
   let i = startOffset;
+  let afterColorChange = false;
 
   while (i < data.length - 1) {
     let val1 = data[i++];
@@ -145,6 +146,7 @@ function decodePECStitches(data, startOffset) {
     if (val1 === 0xFE && val2 === 0xB0) {
       i += 1;  // skip 1 byte (matches pyembroidery f.seek(1, 1))
       stitches.push({ x: absX, y: absY, cmd: CMD_COLOR_CHANGE });
+      afterColorChange = true;
       continue;
     }
 
@@ -177,14 +179,19 @@ function decodePECStitches(data, startOffset) {
       y = signed7(val2);
     }
 
-    // Match pyembroidery behavior exactly:
-    // - trim(): records at current pos, no delta applied
-    // - move(x, y): applies delta, records at new pos
-    // - stitch(x, y): applies delta, records at new pos
-    if (trim) {
-      // out.trim() — cut thread at CURRENT position (before moving)
+    // After COLOR_CHANGE: the next movement is ALWAYS a repositioning jump,
+    // regardless of PEC flags. Different digitizers encode this differently —
+    // some use TRIM+JUMP flags, some use plain short bytes. Either way, the
+    // machine must not stitch here. We also suppress TRIM since the color
+    // change already implies a thread cut.
+    if (afterColorChange) {
+      absX += x;
+      absY += y;
+      stitches.push({ x: absX, y: absY, cmd: CMD_MOVE });
+      afterColorChange = false;
+    } else if (trim) {
+      // Intra-color trim: cut at CURRENT position, then jump to new one
       stitches.push({ x: absX, y: absY, cmd: CMD_TRIM });
-      // out.move(x, y) — then jump to the new position
       absX += x;
       absY += y;
       stitches.push({ x: absX, y: absY, cmd: CMD_MOVE });
@@ -219,9 +226,21 @@ export function encodePP1(stitches) {
   const dv = new DataView(buf);
   let off = 0;
 
-  for (const { x, y, cmd } of stitches) {
+  for (let idx = 0; idx < stitches.length; idx++) {
+    const { x, y, cmd } = stitches[idx];
     let blockFlag = 0;   // section flag (x low 3 bits)
     let stitchFlag = 0;  // operation flag (y low 3 bits)
+
+    // PP1 quirk: drop TRIM when the next command is a JUMP/MOVE.
+    // A trim before a jump is redundant — the machine lifts the needle
+    // for jumps anyway. The Python PP1 writer silently drops these,
+    // and keeping them causes phantom thread cuts.
+    if (cmd === CMD_TRIM) {
+      const next = stitches[idx + 1];
+      if (next && (next.cmd === CMD_MOVE || next.cmd === CMD_COLOR_CHANGE)) {
+        continue;  // skip this TRIM
+      }
+    }
 
     switch (cmd) {
       case CMD_STITCH:
